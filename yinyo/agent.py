@@ -1,4 +1,4 @@
-# agent.py — YINYO Agent Loop v7.0（ReAct + Plan + Reflect + DeepSeek高适配）
+# agent.py — YINYO Agent Loop v8.0（Dual-Process + Provider Chain + Trace2Skill）
 import os, sys, json
 from datetime import datetime, timezone
 
@@ -10,11 +10,12 @@ from model import ModelGateway, ThinkingMode
 from governance import RiskPolicy
 from memory_tool import load_memory_context, ensure_memory_files
 from tools import registry as tool_registry, execute_tool_with_evidence, load_yaml_tools, set_memory_workspace
-from evolution import SkillCrystallizer, ChangeManifest, SelfCheck
+from evolution import SkillCrystallizer, ChangeManifest, SelfCheck, SkillEvolution
 from session import SessionManager
 
+
 class YinyoAgent:
-    """YINYO v7.0 — 独立飞书 Agent 产品（LLM 压缩 + 自动反思）。"""
+    """YINYO v8.0 — Dual-Process 记忆 + Provider Chain + SubAgent + Vision。"""
 
     def __init__(self, workspace: str = ".", max_steps: int = 50,
                  thinking_mode: ThinkingMode = ThinkingMode.NON_THINK,
@@ -35,6 +36,18 @@ class YinyoAgent:
         self.self_check = SelfCheck(self.workspace)
         self.session_manager = SessionManager()
         self.context.set_model(self.model)
+
+        # v8.0: Trace2Skill 闭环
+        self.skill_evolution = SkillEvolution(self.workspace, model=self.model)
+
+        # v8.0: Dual-Process — LLM 事实提取器
+        self.memory.set_model(self.model)
+
+        # v8.0: 暴露 agent 实例供 delegate_task 工具访问
+        self._tool_registry = tool_registry
+        import __main__
+        __main__._yinyo_agent = self
+
         self.run_count = 0
 
         ensure_memory_files(self.workspace)
@@ -97,6 +110,7 @@ class YinyoAgent:
         manifest.create(run_id, task)
         evidence = EvidenceLedger(run_dir)
 
+        # ── System Prompt ──
         core = self.memory.load_core()
         sys_prompt = core.get("SOUL.md", "")[:2000]
         tools_schema = tool_registry.get_schemas()
@@ -104,11 +118,14 @@ class YinyoAgent:
         # v6.0: inject USER/MEMORY/AGENTS
         mc = load_memory_context(self.workspace)
         if mc.get("user", "").strip():
-            ub = "USER PROFILE [" + str(mc["user_chars"]) + "/" + str(mc["user_limit"]) + " chars]" + "\n" + "=" * 50 + "\n" + mc["user"] + "\n"
+            ub = "USER PROFILE [" + str(mc["user_chars"]) + "/" + str(mc["user_limit"]) + " chars]\n" + "=" * 50 + "\n" + mc["user"] + "\n"
             sys_prompt = ub + sys_prompt
-        if mc.get("memory", "").strip():
-            mb = "MEMORY [" + str(mc["memory_chars"]) + "/" + str(mc["memory_limit"]) + " chars]" + "\n" + "=" * 50 + "\n" + mc["memory"] + "\n"
-            sys_prompt = mb + sys_prompt
+
+        # v8.0: MEMORY.md 用 TemporalTree 摘要替代
+        memory_summary = self.memory.get_memory_summary(max_chars=10000)
+        if memory_summary:
+            sys_prompt = "MEMORY [TemporalTree]\n" + "=" * 50 + "\n" + memory_summary + "\n" + sys_prompt
+
         for fn in ["AGENTS.md", ".yinyo.md"]:
             ap = os.path.join(self.workspace, fn)
             if os.path.isfile(ap):
@@ -120,11 +137,23 @@ class YinyoAgent:
         self.context.messages.append({"role": "system", "content": sys_prompt})
         self.context.messages.append({"role": "user", "content": task})
 
+        # ── Memory Retrieval ──
         mem_msgs = self.context.retrieve_memory(self.memory, task, limit=3)
         for mm in mem_msgs:
             self.context.messages.append(mm)
 
-        # Plan
+        # v8.0: Auto-load skills
+        skills = self.skill_evolution.auto_load_skills(task)
+        loaded_skill_names = []
+        if skills:
+            skill_text = "\n".join(
+                f"[SKILL: {s.name} v{s.version}] Triggers: {s.triggers}\nSteps: see skills/{s.name}/SKILL.md"
+                for s in skills
+            )
+            self.context.messages.append({"role": "system", "content": f"Relevant skills loaded:\n{skill_text}"})
+            loaded_skill_names = [s.name for s in skills]
+
+        # ── Plan ──
         pp = "Before executing, create a concise step-by-step plan. Format: [STEP N] goal -> tool -> expected result. Be specific. Only output the plan."
         pm = list(self.context.messages) + [{"role": "user", "content": pp}]
         pr = self.model.chat(messages=pm, tools=None, thinking=ThinkingMode.THINK_HIGH, max_tokens=512)
@@ -132,7 +161,7 @@ class YinyoAgent:
         if pt and "error" not in pr:
             self.context.messages.append({"role": "system", "content": "[Plan]\n" + pt + "\n\nExecute the plan step by step."})
 
-        # ReAct Loop
+        # ── ReAct Loop ──
         while self.current_step < self.max_steps:
             self.current_step += 1
             self.context.auto_manage(self.current_step)
@@ -141,7 +170,11 @@ class YinyoAgent:
             response = self.model.chat(messages=self.context.messages, tools=tools_schema, thinking=thinking)
 
             if response.get("_fallback"):
-                self.change_manifest.record("config_changed", {"key": "model_fallback", "from": self.model.default_model, "to": "deepseek-v4-pro"})
+                self.change_manifest.record("config_changed", {
+                    "key": "model_fallback",
+                    "from": response.get("_fallback_from", "unknown"),
+                    "to": response.get("model", "unknown"),
+                })
                 self.context.messages.append({"role": "system", "content": "[System: Model fallback]"})
 
             if "error" in response:
@@ -202,19 +235,41 @@ class YinyoAgent:
                         verification={"verified_steps": self.current_step - self.blocked_steps, "blocked_steps": self.blocked_steps,
                                       "final_status": "verified" if self.blocked_steps == 0 else "partial"})
 
+        # ── Skill Crystallization ──
         skill = self.crystallizer.observe(self.tool_sequence)
         if skill:
             self.change_manifest.record("skill_crystallized", {"skill": skill.name, "tools": self.tool_sequence, "status": skill.status.value})
 
+        # ── Auto-Reflect ──
         summary_text = "Task: " + task[:100] + ". Steps: " + str(self.current_step) + ". Tools: " + str(list(set(self.tool_sequence))) + ". Status: " + final_status + "."
+        reflection = self._reflect_on_run(task, summary_text, run_id, run_dir)
+
+        # v8.0: Dual-Process — LLM 事实提取 → 存入 TemporalTree
+        self.memory.extract_and_store(self.context.messages, run_id)
+
+        # v8.0: Trace2Skill — 检测失败模式
+        if final_status != "success" or self.blocked_steps > 0:
+            error_msg = f"Status: {final_status}, Blocked: {self.blocked_steps}"
+            pattern = self.skill_evolution.detect_failure_pattern(task, error_msg, [])
+            if pattern and pattern.occurrence_count >= 2:
+                new_skill = self.skill_evolution.extract_skill_from_failure(
+                    pattern, task, error_msg, self.context.messages
+                )
+                if new_skill:
+                    self.change_manifest.record("skill_extracted_from_failure", {
+                        "skill": new_skill.name, "pattern": pattern.task_keywords,
+                    })
+
+        # v8.0: 记录技能使用结果
+        for sname in loaded_skill_names:
+            self.skill_evolution.record_skill_outcome(sname, final_status == "success")
+
+        # ── Episodic Save ──
         self.memory.save_episodic(run_id, [], summary_text)
         self.change_manifest.record("memory_updated", {"layer": "L2", "run_id": run_id, "summary": summary_text[:200]})
         self.memory.archive_shadow(run_id)
 
-        # === v7.0: Auto-Reflect ===
-        reflection = self._reflect_on_run(task, summary_text, run_id, run_dir)
-
-        # === v7.0: Deep-Reflect (every 10 runs) ===
+        # v7.0: Deep-Reflect
         self.run_count += 1
         if self.run_count % 10 == 0:
             self._deep_reflect()
@@ -224,7 +279,7 @@ class YinyoAgent:
                 "reflection": reflection}
 
     def _reflect_on_run(self, task: str, summary: str, run_id: str, run_dir: str) -> str:
-        """v7.0: LLM reflect after each run. Auto-update MEMORY.md. Cost: ~$0.0005."""
+        """v7.0: LLM reflect after each run. v8.0: also feeds into TemporalTree via extract_and_store."""
         mp = os.path.join(self.workspace, "MEMORY.md")
         cm = ""
         if os.path.isfile(mp):
@@ -262,7 +317,7 @@ class YinyoAgent:
         return rt
 
     def _deep_reflect(self):
-        """v7.0: Periodic deep reflect. Scan recent runs for patterns. Cost: ~$0.002."""
+        """v7.0: Periodic deep reflect. v8.0: adds pattern analysis to TemporalTree."""
         rd = os.path.join(self.workspace, "runs")
         if not os.path.isdir(rd):
             return
@@ -293,6 +348,12 @@ class YinyoAgent:
             memory_add("memory", fact, self.workspace)
         for ap in data.get("anti_patterns", []):
             memory_add("memory", "[ANTI-PATTERN] " + ap, self.workspace)
+            # ★ v8.0: anti-pattern 也存入 TemporalTree
+            self.memory.add_fact(
+                content=ap, category="Anti-Patterns",
+                scopes={"type": "anti_pattern"},
+                confidence=0.9, source_run_id="deep-reflect",
+            )
         self.change_manifest.record("deep_reflect", {"patterns": len(data.get("patterns", [])), "anti_patterns": len(data.get("anti_patterns", []))})
 
     def _resolve_thinking(self, consecutive_failures: int) -> ThinkingMode:

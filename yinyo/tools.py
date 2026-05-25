@@ -22,6 +22,9 @@ class ToolRegistry:
             return tool.fn(**args)
         except Exception as e:
             return {"error": f"Tool execution error: {type(e).__name__}: {e}"}
+    def execute(self, name: str, args: dict) -> dict:
+        """v8.0: delegate.py 使用的同义方法。"""
+        return self.dispatch(name, args)
     def list(self) -> list:
         return list(self._tools.values())
 
@@ -481,4 +484,66 @@ registry.register(Tool(
     fn=do_memory,
     schema=do_memory._tool_meta["schema"],
     permission=do_memory._tool_meta["permission"]
+))
+
+# ── v8.0 新增工具 ──
+
+@tool(permission="ALLOW")
+def do_vision(image_source: str, query: str = "请详细描述这张图片的内容") -> dict:
+    """Analyze an image and return a text description. Works with local files, URLs, or base64.
+
+    Args:
+        image_source: Local file path, image URL, or base64 data URL
+        query: What to ask about the image (default: detailed description)
+    """
+    from vision_adapter import get_vision_adapter
+    adapter = get_vision_adapter()
+    result = adapter.describe(image_source, query)
+    return result
+
+registry.register(Tool(
+    name="do_vision",
+    fn=do_vision,
+    schema=do_vision._tool_meta["schema"],
+    permission=do_vision._tool_meta["permission"]
+))
+
+
+@tool(permission="ALLOW")
+def delegate_task(goal: str, context: str = "") -> dict:
+    """Delegate a sub-task to a worker agent. Returns the worker's result.
+
+    Use this for parallel independent tasks. Multiple delegate_task calls
+    can run concurrently via parallel tool calls.
+
+    Args:
+        goal: The task description for the worker agent
+        context: Additional context (optional, parent context is auto-shared)
+    """
+    from delegate import SubAgent
+    import __main__ as _main
+    agent = getattr(_main, '_yinyo_agent', None)
+    if not agent:
+        return {"error": "delegate_task: no parent agent found"}
+
+    sub = SubAgent(agent.model, agent._tool_registry, max_steps=20)
+    result = sub.run(
+        goal=goal,
+        parent_messages=agent.context.messages,
+        parent_workspace=agent.workspace,
+    )
+    return {
+        "result": result.result,
+        "steps": result.steps,
+        "status": result.status,
+        "run_id": result.run_id,
+        "tool_traces_count": len(result.tool_traces),
+        "error": result.error,
+    }
+
+registry.register(Tool(
+    name="delegate_task",
+    fn=delegate_task,
+    schema=delegate_task._tool_meta["schema"],
+    permission=delegate_task._tool_meta["permission"]
 ))

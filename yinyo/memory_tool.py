@@ -1,14 +1,57 @@
-# memory_tool.py — 持久记忆工具 v1.0
-# 对标 Hermes memory tool：add / replace / remove，target 分离 user 和 memory
-import os, re
+# memory_tool.py — Memory CRUD Tool v8.0
+"""对标 Hermes memory tool（add/replace/remove），扩展 TemporalTree 操作。
 
-USER_CHAR_LIMIT = 1500   # ~500 tokens
-MEMORY_CHAR_LIMIT = 2200  # ~800 tokens
-SECTION_SEP = "\n§\n"     # 条目分隔符（对标 Hermes § 分隔符）
+新增 v8.0 操作：supersede（事实取代）、audit（版本追溯）、search（Multi-Scope 检索）。
+"""
 
+import os, json
+
+MEMORY_WORKSPACE: str | None = None
+
+# 容量限制
+USER_LIMIT = 1500      # USER.md 字符上限
+MEMORY_LIMIT = 10000   # MEMORY.md 字符上限（v8.0 扩容到10K）
+
+
+def set_memory_workspace(workspace: str):
+    global MEMORY_WORKSPACE
+    MEMORY_WORKSPACE = workspace
+
+
+def ensure_memory_files(workspace: str):
+    """确保 USER.md 和 MEMORY.md 存在。"""
+    for fname, header in [
+        ("USER.md", "# USER.md — About the user\n\n"),
+        ("MEMORY.md", "# MEMORY.md — Agent's persistent notes\n\n"),
+    ]:
+        path = os.path.join(workspace, fname)
+        if not os.path.isfile(path):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(header)
+
+
+def load_memory_context(workspace: str) -> dict:
+    """加载 USER.md 和 MEMORY.md 用于 system prompt 注入。"""
+    result = {"user": "", "user_chars": 0, "user_limit": USER_LIMIT,
+              "memory": "", "memory_chars": 0, "memory_limit": MEMORY_LIMIT}
+
+    for key, fname, limit in [
+        ("user", "USER.md", USER_LIMIT),
+        ("memory", "MEMORY.md", MEMORY_LIMIT),
+    ]:
+        path = os.path.join(workspace, fname)
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            result[key] = content[:limit]
+            result[f"{key}_chars"] = len(content)
+
+    return result
+
+
+# ── 低层级操作（供 agent 调用） ──
 
 def _read_file(path: str) -> str:
-    """读文件，不存在返回空字符串。"""
     if not os.path.isfile(path):
         return ""
     with open(path, "r", encoding="utf-8") as f:
@@ -16,181 +59,138 @@ def _read_file(path: str) -> str:
 
 
 def _write_file(path: str, content: str):
-    """写文件，自动创建目录。"""
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
 
 def _split_entries(content: str) -> list[str]:
-    """按 § 分隔符拆分记忆条目。"""
-    if not content:
-        return []
-    # 跳过空行和纯分隔符
-    entries = content.split(SECTION_SEP)
-    return [e.strip() for e in entries if e.strip() and e.strip() != "§"]
+    """按 § 分隔符拆分条目。"""
+    return [e.strip() for e in content.split("§") if e.strip()]
 
 
 def _join_entries(entries: list[str]) -> str:
-    """合并条目为文件内容。"""
-    return SECTION_SEP.join(e.strip() for e in entries if e.strip())
-
-
-def _count_chars(entries: list[str]) -> int:
-    """计算条目总字符数（不含分隔符）。"""
-    return sum(len(e) for e in entries)
-
-
-def _enforce_limit(entries: list[str], limit: int) -> list[str]:
-    """超出限制时合并最短的条目，直到符合限制。超限单条目截断。"""
-    while _count_chars(entries) > limit and len(entries) > 1:
-        entries.sort(key=len)
-        merged = entries[0] + "; " + entries[1]
-        entries = [merged] + entries[2:]
-    # 兜底：合并后仍只有 1 条且超限 → 截断
-    if len(entries) == 1 and len(entries[0]) > limit:
-        entries[0] = entries[0][:limit - 3] + "..."
-    return entries
+    return "\n§\n".join(entries)
 
 
 def memory_add(target: str, content: str, workspace: str) -> dict:
-    """添加记忆条目。
+    """添加记忆条目。"""
+    if target not in ("user", "memory"):
+        return {"ok": False, "error": f"Invalid target: {target}"}
 
-    Args:
-        target: "user" 或 "memory"
-        content: 要添加的内容
-        workspace: Agent workspace 根目录
+    fname = "USER.md" if target == "user" else "MEMORY.md"
+    limit = USER_LIMIT if target == "user" else MEMORY_LIMIT
+    path = os.path.join(workspace, fname)
 
-    Returns:
-        {"status": "added", "target": "user", "chars_used": 150, "chars_limit": 1500}
-    """
-    filename = "USER.md" if target == "user" else "MEMORY.md"
-    char_limit = USER_CHAR_LIMIT if target == "user" else MEMORY_CHAR_LIMIT
-    path = os.path.join(workspace, filename)
+    current = _read_file(path)
+    entries = _split_entries(current)
 
-    existing = _read_file(path)
-    entries = _split_entries(existing)
-
-    # 去重检测（前 80 字符相似）
-    content_head = content[:80].strip().lower()
+    # 去重：前 80 字符相似即判重复
+    prefix = content[:80]
     for e in entries:
-        if e[:80].strip().lower() == content_head:
-            return {"status": "duplicate", "message": "Similar entry already exists",
-                    "existing": e[:100]}
+        if e[:80] == prefix:
+            return {"ok": False, "error": "Duplicate entry (first 80 chars match)"}
 
     entries.append(content)
-    entries = _enforce_limit(entries, char_limit)
 
-    _write_file(path, _join_entries(entries))
-    return {
-        "status": "added",
-        "target": target,
-        "file": filename,
-        "chars_used": _count_chars(entries),
-        "chars_limit": char_limit,
-        "entries_count": len(entries),
-    }
+    # 容量控制：超出限制时合并最短条目
+    while len(_join_entries(entries)) > limit and len(entries) > 1:
+        shortest_idx = min(range(len(entries)), key=lambda i: len(entries[i]))
+        if shortest_idx > 0:
+            entries[shortest_idx - 1] += "; " + entries.pop(shortest_idx)
+        else:
+            entries[shortest_idx + 1] = entries.pop(shortest_idx) + "; " + entries[shortest_idx + 1]
+
+    # 写入
+    final = _join_entries(entries)
+    if not final.startswith("#"):
+        header = _read_file(path).split("§")[0].split("\n\n")[0] + "\n\n" if "\n\n" in _read_file(path) else ""
+        final = header + final
+
+    _write_file(path, final)
+    return {"ok": True, "target": target, "chars": len(final), "limit": limit}
 
 
-def memory_replace(target: str, old_text: str, content: str, workspace: str) -> dict:
-    """替换记忆条目（子串匹配，对标 Hermes）。
+def memory_replace(target: str, old_text: str, new_text: str, workspace: str) -> dict:
+    """子串匹配替换。"""
+    if target not in ("user", "memory"):
+        return {"ok": False, "error": f"Invalid target: {target}"}
 
-    Args:
-        target: "user" 或 "memory"
-        old_text: 用于匹配旧条目的唯一子串
-        content: 新内容
-        workspace: Agent workspace 根目录
-    """
-    filename = "USER.md" if target == "user" else "MEMORY.md"
-    path = os.path.join(workspace, filename)
+    fname = "USER.md" if target == "user" else "MEMORY.md"
+    path = os.path.join(workspace, fname)
+    current = _read_file(path)
 
-    existing = _read_file(path)
-    entries = _split_entries(existing)
+    count = current.count(old_text)
+    if count == 0:
+        return {"ok": False, "error": "old_text not found"}
+    if count > 1:
+        return {"ok": False, "error": f"Ambiguous: {count} matches found"}
 
-    # 子串匹配
-    old_lower = old_text.strip().lower()
-    matches = [i for i, e in enumerate(entries) if old_lower in e.lower()]
-
-    if len(matches) == 0:
-        return {"status": "not_found",
-                "message": f"No entry matching '{old_text[:60]}' found"}
-
-    if len(matches) > 1:
-        previews = [entries[i][:80] for i in matches]
-        return {"status": "ambiguous",
-                "message": f"Found {len(matches)} matching entries",
-                "matches": previews}
-
-    entries[matches[0]] = content
-    _write_file(path, _join_entries(entries))
-    return {
-        "status": "replaced",
-        "target": target,
-        "chars_used": _count_chars(entries),
-    }
+    new_content = current.replace(old_text, new_text, 1)
+    _write_file(path, new_content)
+    return {"ok": True, "target": target}
 
 
 def memory_remove(target: str, old_text: str, workspace: str) -> dict:
-    """删除记忆条目（子串匹配）。
+    """子串匹配删除。"""
+    if target not in ("user", "memory"):
+        return {"ok": False, "error": f"Invalid target: {target}"}
 
-    Args:
-        target: "user" 或 "memory"
-        old_text: 用于匹配旧条目的唯一子串
-        workspace: Agent workspace 根目录
-    """
-    filename = "USER.md" if target == "user" else "MEMORY.md"
-    path = os.path.join(workspace, filename)
+    fname = "USER.md" if target == "user" else "MEMORY.md"
+    path = os.path.join(workspace, fname)
+    current = _read_file(path)
 
-    existing = _read_file(path)
-    entries = _split_entries(existing)
+    if old_text not in current:
+        return {"ok": False, "error": "old_text not found"}
 
-    old_lower = old_text.strip().lower()
-    matches = [i for i, e in enumerate(entries) if old_lower in e.lower()]
+    new_content = current.replace(old_text, "", 1)
+    _write_file(path, new_content)
+    return {"ok": True, "target": target}
 
-    if len(matches) == 0:
-        return {"status": "not_found"}
 
-    if len(matches) > 1:
-        return {"status": "ambiguous",
-                "message": f"Found {len(matches)} matching entries. Please be more specific."}
+def memory_search(query: str, scopes: dict = None, limit: int = 5) -> dict:
+    """Multi-Scope 语义检索（调用 TemporalTree）。"""
+    from memory import MemoryStore
+    if not MEMORY_WORKSPACE:
+        return {"ok": False, "error": "Memory workspace not set"}
 
-    removed = entries.pop(matches[0])
-    _write_file(path, _join_entries(entries))
+    store = MemoryStore(MEMORY_WORKSPACE)
+    nodes = store.search_memory(query, scopes, limit)
     return {
-        "status": "removed",
-        "target": target,
-        "removed_preview": removed[:100],
+        "ok": True,
+        "results": [
+            {"id": n.id, "content": n.content, "category": n.category,
+             "confidence": n.confidence, "status": n.status, "version": n.version}
+            for n in nodes
+        ]
     }
 
 
-def load_memory_context(workspace: str) -> dict:
-    """加载 USER.md 和 MEMORY.md 内容用于注入 system prompt。
+def memory_supersede(old_node_id: str, new_content: str) -> dict:
+    """用新事实取代旧事实。"""
+    from memory import MemoryStore
+    if not MEMORY_WORKSPACE:
+        return {"ok": False, "error": "Memory workspace not set"}
 
-    Returns:
-        {"user": "content...", "memory": "content...",
-         "user_chars": 150, "user_limit": 1500, ...}
-    """
-    result = {}
-    for target, filename, limit in [
-        ("user", "USER.md", USER_CHAR_LIMIT),
-        ("memory", "MEMORY.md", MEMORY_CHAR_LIMIT),
-    ]:
-        path = os.path.join(workspace, filename)
-        content = _read_file(path)
-        entries = _split_entries(content)
-        result[target] = content
-        result[f"{target}_chars"] = _count_chars(entries)
-        result[f"{target}_limit"] = limit
-        result[f"{target}_entries"] = len(entries)
-    return result
+    store = MemoryStore(MEMORY_WORKSPACE)
+    node = store.tree.supersede(old_node_id, new_content)
+    if node:
+        return {"ok": True, "new_id": node.id, "version": node.version}
+    return {"ok": False, "error": f"Node not found: {old_node_id}"}
 
 
-def ensure_memory_files(workspace: str):
-    """确保 USER.md 和 MEMORY.md 存在，不存在则创建空文件。"""
-    for filename, header in [
-        ("USER.md", "# USER.md — About the user\n"),
-        ("MEMORY.md", "# MEMORY.md — Agent's persistent notes\n"),
-    ]:
-        path = os.path.join(workspace, filename)
-        if not os.path.isfile(path):
-            _write_file(path, header)
+def memory_audit(node_id: str) -> dict:
+    """追溯事实的完整版本链。"""
+    from memory import MemoryStore
+    if not MEMORY_WORKSPACE:
+        return {"ok": False, "error": "Memory workspace not set"}
+
+    store = MemoryStore(MEMORY_WORKSPACE)
+    trail = store.tree.get_audit_trail(node_id)
+    return {
+        "ok": True,
+        "trail": [
+            {"id": n.id, "content": n.content, "version": n.version,
+             "status": n.status, "created_at": n.created_at}
+            for n in trail
+        ]
+    }

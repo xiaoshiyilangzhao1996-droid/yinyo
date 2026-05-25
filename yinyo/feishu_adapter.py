@@ -295,10 +295,18 @@ class FeishuAdapter:
                 # 消息事件
                 if event.get("type") == "event_callback":
                     inner = event.get("event", {})
-                    msg_type = inner.get("message", {}).get("message_type", "text")
+                    msg = inner.get("message", {})
+                    msg_type = msg.get("message_type", "text")
                     if msg_type == "text":
                         threading.Thread(
                             target=adapter._handle_text_message,
+                            args=(inner,),
+                            daemon=True
+                        ).start()
+                    elif msg_type == "image":
+                        # v8.0: 图片消息 → 下载 + 调用 do_vision
+                        threading.Thread(
+                            target=adapter._handle_image_message,
                             args=(inner,),
                             daemon=True
                         ).start()
@@ -370,3 +378,96 @@ class FeishuAdapter:
                 reply_to=message_id or root_message_id,
                 files=reply_files
             )
+
+    def _handle_image_message(self, event: dict):
+        """v8.0: 处理图片消息。下载图片 → 调用 do_vision → 文本注入 Agent。"""
+        msg = event.get("message", {})
+        image_key = msg.get("content", "")
+
+        # 尝试解析 image_key（飞书格式：{\"image_key\":\"xxx\"}）
+        if isinstance(image_key, str):
+            try:
+                image_key = json.loads(image_key).get("image_key", image_key)
+            except json.JSONDecodeError:
+                pass
+
+        chat_id = msg.get("chat_id", "")
+        message_id = msg.get("message_id", "")
+        user_id = event.get("sender", {}).get("sender_id", {}).get("open_id", "")
+        root_message_id = msg.get("root_id", "")
+
+        if not self.agent or not image_key:
+            return
+
+        # 下载图片
+        image_path = self._download_image(image_key)
+        if not image_path:
+            # 尝试用 image_key 作为路径
+            image_path = image_key
+
+        # 调用 do_vision
+        try:
+            from vision_adapter import get_vision_adapter
+            adapter = get_vision_adapter()
+            vision_result = adapter.describe(image_path, "请详细描述这张图片的内容")
+            description = vision_result.get("description", "")
+            if vision_result.get("error"):
+                description = f"[Image received but vision failed: {vision_result['error']}]"
+        except Exception as e:
+            description = f"[Image received but vision failed: {e}]"
+
+        # 构建上下文文本
+        text = f"[Image message received]\n{description}"
+
+        # Processing reaction
+        if message_id:
+            self.add_reaction(message_id)
+
+        try:
+            result = self.agent.handle_message(user_id, chat_id, text)
+        except Exception as e:
+            result = {"text": f"\u274c 处理出错: {e}", "files": []}
+
+        if message_id:
+            self.remove_reaction(message_id)
+
+        if result is None:
+            return
+
+        reply_text = result.get("text", "")
+        reply_files = result.get("files", [])
+
+        if reply_text or reply_files:
+            self.send_message(
+                chat_id, reply_text,
+                reply_to=message_id or root_message_id,
+                files=reply_files
+            )
+
+    def _download_image(self, image_key: str) -> str | None:
+        """下载飞书图片到本地。"""
+        try:
+            token = self._get_tenant_token()
+            resp = http.get(
+                f"{FEISHU_API_BASE}/im/v1/images/{image_key}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return None
+
+            ext = ".png"
+            content_type = resp.headers.get("Content-Type", "")
+            if "jpeg" in content_type or "jpg" in content_type:
+                ext = ".jpg"
+            elif "gif" in content_type:
+                ext = ".gif"
+            elif "webp" in content_type:
+                ext = ".webp"
+
+            path = os.path.join(MEDIA_DIR, f"img_{image_key[:12]}{ext}")
+            with open(path, "wb") as f:
+                f.write(resp.content)
+            return path
+        except Exception:
+            return None
