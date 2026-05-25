@@ -33,11 +33,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/wangzhengyuan/yinyo"
-Documentation = "https://github.com/wangzhengyuan/yinyo#readme"
-Repository = "https://github.com/wangzhengyuan/yinyo.git"
-Issues = "https://github.com/wangzhengyuan/yinyo/issues"
-Changelog = "https://github.com/wangzhengyuan/yinyo/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/xiaoshiyilangzhao1996-droid/yinyo"
+Documentation = "https://github.com/xiaoshiyilangzhao1996-droid/yinyo#readme"
+Repository = "https://github.com/xiaoshiyilangzhao1996-droid/yinyo.git"
+Issues = "https://github.com/xiaoshiyilangzhao1996-droid/yinyo/issues"
+Changelog = "https://github.com/xiaoshiyilangzhao1996-droid/yinyo/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["yinyo*"]

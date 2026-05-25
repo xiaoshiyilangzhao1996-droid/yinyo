@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-Report privately via [GitHub Security Advisories](https://github.com/wangzhengyuan/yinyo/security/advisories/new).
+Report privately via [GitHub Security Advisories](https://github.com/xiaoshiyilangzhao1996-droid/yinyo/security/advisories/new).
 
 A useful report includes:
 - Concise description and severity assessment.

@@ -33,7 +33,7 @@ We value contributions in this order:
 ### Setup
 
 ```bash
-git clone https://github.com/wangzhengyuan/yinyo.git
+git clone https://github.com/xiaoshiyilangzhao1996-droid/yinyo.git
 cd yinyo
 pip install -e ".[dev]"
 ```
