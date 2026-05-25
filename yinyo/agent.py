@@ -1,0 +1,303 @@
+# agent.py — YINYO Agent Loop v7.0（ReAct + Plan + Reflect + DeepSeek高适配）
+import os, sys, json
+from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from context import ContextManager
+from evidence import EvidenceLedger, VerificationGate, RunManifest
+from memory import MemoryStore, SimpleMemCompressor
+from model import ModelGateway, ThinkingMode
+from governance import RiskPolicy
+from memory_tool import load_memory_context, ensure_memory_files
+from tools import registry as tool_registry, execute_tool_with_evidence, load_yaml_tools, set_memory_workspace
+from evolution import SkillCrystallizer, ChangeManifest, SelfCheck
+from session import SessionManager
+
+class YinyoAgent:
+    """YINYO v7.0 — 独立飞书 Agent 产品（LLM 压缩 + 自动反思）。"""
+
+    def __init__(self, workspace: str = ".", max_steps: int = 50,
+                 thinking_mode: ThinkingMode = ThinkingMode.NON_THINK,
+                 api_key: str = None, base_url: str = "https://api.deepseek.com",
+                 default_model: str = "deepseek-v4-flash"):
+        self.workspace = os.path.abspath(workspace)
+        self.max_steps = max_steps
+        os.makedirs(self.workspace, exist_ok=True)
+
+        self.context = ContextManager(cache_dir=os.path.join(self.workspace, "cache"))
+        self.memory = MemoryStore(self.workspace)
+        self.model = ModelGateway(api_key=api_key, base_url=base_url,
+                                  default_model=default_model, thinking=thinking_mode)
+        self.governance = RiskPolicy(self.workspace)
+        self.verifier = VerificationGate()
+        self.crystallizer = SkillCrystallizer(self.workspace)
+        self.change_manifest = ChangeManifest(self.workspace)
+        self.self_check = SelfCheck(self.workspace)
+        self.session_manager = SessionManager()
+        self.context.set_model(self.model)
+        self.run_count = 0
+
+        ensure_memory_files(self.workspace)
+        set_memory_workspace(self.workspace)
+
+        self.current_run_id: str = ""
+        self.current_step: int = 0
+        self.tool_sequence: list = []
+        self.blocked_steps: int = 0
+
+        self._run_selfcheck()
+        self._autoload_yaml_tools()
+
+    def handle_message(self, user_id: str, chat_id: str, text: str) -> dict | None:
+        session = self.session_manager.get_or_create(user_id, chat_id)
+        cmd_result = self.session_manager.handle_command(text, session)
+        if cmd_result:
+            return cmd_result
+        if self.session_manager.is_duplicate(text, user_id):
+            return None
+        session.add_user_message(text)
+        result = self.run(text)
+        session.add_assistant_message(result)
+        final_response = ""
+        for msg in reversed(self.context.messages):
+            if msg.get("role") == "assistant" and msg.get("content"):
+                final_response = msg["content"]
+                break
+        if not final_response:
+            final_response = "Done (" + str(result.get("steps", 0)) + " steps)."
+        return {"text": final_response, "files": [], "run_id": result.get("run_id", "")}
+
+    def _run_selfcheck(self):
+        report = self.self_check.run()
+        self.change_manifest.record(
+            "self_check_passed" if report.passed else "self_check_failed",
+            {"summary": report.summary, "checks_count": len(report.checks)}
+        )
+
+    def _autoload_yaml_tools(self):
+        import glob
+        for yf in glob.glob(os.path.join(self.workspace, "skills", "*", "tools.yaml")):
+            count = load_yaml_tools(yf, tool_registry)
+            if count > 0:
+                self.change_manifest.record("config_changed", {
+                    "key": "yaml_tools_loaded", "file": yf, "tools_count": count
+                })
+
+    def run(self, task: str) -> dict:
+        run_id = "r-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        self.current_run_id = run_id
+        self.current_step = 0
+        self.tool_sequence = []
+        self.blocked_steps = 0
+        self.context.messages = []
+        consecutive_failures = 0
+
+        run_dir = os.path.join(self.workspace, "runs", run_id)
+        manifest = RunManifest(run_dir)
+        manifest.create(run_id, task)
+        evidence = EvidenceLedger(run_dir)
+
+        core = self.memory.load_core()
+        sys_prompt = core.get("SOUL.md", "")[:2000]
+        tools_schema = tool_registry.get_schemas()
+
+        # v6.0: inject USER/MEMORY/AGENTS
+        mc = load_memory_context(self.workspace)
+        if mc.get("user", "").strip():
+            ub = "USER PROFILE [" + str(mc["user_chars"]) + "/" + str(mc["user_limit"]) + " chars]" + "\n" + "=" * 50 + "\n" + mc["user"] + "\n"
+            sys_prompt = ub + sys_prompt
+        if mc.get("memory", "").strip():
+            mb = "MEMORY [" + str(mc["memory_chars"]) + "/" + str(mc["memory_limit"]) + " chars]" + "\n" + "=" * 50 + "\n" + mc["memory"] + "\n"
+            sys_prompt = mb + sys_prompt
+        for fn in ["AGENTS.md", ".yinyo.md"]:
+            ap = os.path.join(self.workspace, fn)
+            if os.path.isfile(ap):
+                with open(ap, "r", encoding="utf-8") as f:
+                    agents = f.read()[:1500]
+                sys_prompt = "PROJECT CONTEXT (" + fn + ")\n" + agents + "\n" + sys_prompt
+                break
+
+        self.context.messages.append({"role": "system", "content": sys_prompt})
+        self.context.messages.append({"role": "user", "content": task})
+
+        mem_msgs = self.context.retrieve_memory(self.memory, task, limit=3)
+        for mm in mem_msgs:
+            self.context.messages.append(mm)
+
+        # Plan
+        pp = "Before executing, create a concise step-by-step plan. Format: [STEP N] goal -> tool -> expected result. Be specific. Only output the plan."
+        pm = list(self.context.messages) + [{"role": "user", "content": pp}]
+        pr = self.model.chat(messages=pm, tools=None, thinking=ThinkingMode.THINK_HIGH, max_tokens=512)
+        pt = pr.get("content", "")
+        if pt and "error" not in pr:
+            self.context.messages.append({"role": "system", "content": "[Plan]\n" + pt + "\n\nExecute the plan step by step."})
+
+        # ReAct Loop
+        while self.current_step < self.max_steps:
+            self.current_step += 1
+            self.context.auto_manage(self.current_step)
+
+            thinking = self._resolve_thinking(consecutive_failures)
+            response = self.model.chat(messages=self.context.messages, tools=tools_schema, thinking=thinking)
+
+            if response.get("_fallback"):
+                self.change_manifest.record("config_changed", {"key": "model_fallback", "from": self.model.default_model, "to": "deepseek-v4-pro"})
+                self.context.messages.append({"role": "system", "content": "[System: Model fallback]"})
+
+            if "error" in response:
+                self.context.messages.append({"role": "user", "content": "[System: API error: " + str(response["error"]) + "]"})
+                consecutive_failures += 1
+                continue
+
+            tool_calls = response.get("tool_calls", [])
+            if not tool_calls and response.get("finish_reason", "") == "stop":
+                ac = response.get("content", "")
+                if ac:
+                    self.context.messages.append({"role": "assistant", "content": ac})
+                break
+
+            if not tool_calls:
+                self.context.messages.append({"role": "assistant", "content": response.get("content", "")})
+                continue
+
+            am = {"role": "assistant", "content": response.get("content") or ""}
+            if "reasoning_content" in response:
+                am["reasoning_content"] = response["reasoning_content"]
+            am["tool_calls"] = tool_calls
+            self.context.messages.append(am)
+
+            step_has_blocked = False
+            for tc in tool_calls:
+                tn = tc.get("function", {}).get("name", "unknown")
+                ta_str = tc.get("function", {}).get("arguments", "{}")
+                tid = tc.get("id", "")
+                try:
+                    ta = json.loads(ta_str)
+                except json.JSONDecodeError:
+                    ta = {}
+
+                result = execute_tool_with_evidence(tool_registry, tn, ta, evidence, self.governance, run_id, self.current_step)
+                verify = self.verifier.verify({"tool": tn, "args": ta, "result": result, "hash": result.get("hash", "")})
+
+                if verify.status == "blocked":
+                    self.blocked_steps += 1
+                    step_has_blocked = True
+                    manifest.update(blocked_reason=verify.reason)
+                    self.context.messages.append({"role": "tool", "tool_call_id": tid, "content": json.dumps({"error": "Verification blocked: " + verify.reason, "_blocked": True}, ensure_ascii=False)})
+                    continue
+
+                self.tool_sequence.append(tn)
+                self.context.messages.append({"role": "tool", "tool_call_id": tid, "content": json.dumps(result, ensure_ascii=False)})
+
+            if step_has_blocked:
+                consecutive_failures += 1
+            else:
+                consecutive_failures = 0
+            if consecutive_failures >= 2:
+                continue
+
+        final_status = "success" if self.current_step < self.max_steps else "max_steps_reached"
+        manifest.update(status=final_status, steps=self.current_step, tools_used=list(set(self.tool_sequence)),
+                        ended=datetime.now(timezone.utc).isoformat(),
+                        verification={"verified_steps": self.current_step - self.blocked_steps, "blocked_steps": self.blocked_steps,
+                                      "final_status": "verified" if self.blocked_steps == 0 else "partial"})
+
+        skill = self.crystallizer.observe(self.tool_sequence)
+        if skill:
+            self.change_manifest.record("skill_crystallized", {"skill": skill.name, "tools": self.tool_sequence, "status": skill.status.value})
+
+        summary_text = "Task: " + task[:100] + ". Steps: " + str(self.current_step) + ". Tools: " + str(list(set(self.tool_sequence))) + ". Status: " + final_status + "."
+        self.memory.save_episodic(run_id, [], summary_text)
+        self.change_manifest.record("memory_updated", {"layer": "L2", "run_id": run_id, "summary": summary_text[:200]})
+        self.memory.archive_shadow(run_id)
+
+        # === v7.0: Auto-Reflect ===
+        reflection = self._reflect_on_run(task, summary_text, run_id, run_dir)
+
+        # === v7.0: Deep-Reflect (every 10 runs) ===
+        self.run_count += 1
+        if self.run_count % 10 == 0:
+            self._deep_reflect()
+
+        return {"run_id": run_id, "status": final_status, "steps": self.current_step,
+                "tools_used": list(set(self.tool_sequence)), "evidence_file": "runs/" + run_id + "/evidence.jsonl",
+                "reflection": reflection}
+
+    def _reflect_on_run(self, task: str, summary: str, run_id: str, run_dir: str) -> str:
+        """v7.0: LLM reflect after each run. Auto-update MEMORY.md. Cost: ~$0.0005."""
+        mp = os.path.join(self.workspace, "MEMORY.md")
+        cm = ""
+        if os.path.isfile(mp):
+            with open(mp, "r", encoding="utf-8") as f:
+                cm = f.read()[:2000]
+
+        ep = os.path.join(run_dir, "evidence.jsonl")
+        ev = ""
+        if os.path.isfile(ep):
+            with open(ep, "r", encoding="utf-8") as f:
+                ls = f.readlines()[-5:]
+                ev = "\n".join(l[:200] for l in ls)
+
+        prompt = "Review this completed task and decide what to remember.\n\nTask: " + task + "\nResult: " + summary + "\nEvidence:\n" + ev + "\n\nCurrent MEMORY.md:\n" + cm + "\n\nOutput ONLY a JSON object with: reflections (list of 1-3 key lessons), memory_add (list of strings, empty if none), memory_update (list of {old_text, new_text}), memory_remove (list of strings)."
+        try:
+            resp = self.model.chat(messages=[{"role": "user", "content": prompt}], tools=None, max_tokens=500)
+            data = json.loads(resp.get("content", "{}"))
+        except Exception:
+            data = {"reflections": [], "memory_add": [], "memory_update": [], "memory_remove": []}
+
+        from memory_tool import memory_add, memory_replace, memory_remove
+        for fact in data.get("memory_add", []):
+            memory_add("memory", fact, self.workspace)
+        for upd in data.get("memory_update", []):
+            memory_replace("memory", upd.get("old_text", ""), upd.get("new_text", ""), self.workspace)
+        for old in data.get("memory_remove", []):
+            memory_remove("memory", old, self.workspace)
+
+        rt = "\n".join("- " + r for r in data.get("reflections", []))
+        if rt:
+            rp = os.path.join(run_dir, "reflection.md")
+            with open(rp, "w", encoding="utf-8") as f:
+                f.write("# Run " + run_id + " Reflection\n\n" + rt + "\n")
+            self.memory.vector_cache.add(run_id, rt, {"task": task[:100], "scope": "session"})
+        return rt
+
+    def _deep_reflect(self):
+        """v7.0: Periodic deep reflect. Scan recent runs for patterns. Cost: ~$0.002."""
+        rd = os.path.join(self.workspace, "runs")
+        if not os.path.isdir(rd):
+            return
+        recent = []
+        for rid in sorted(os.listdir(rd), reverse=True)[:10]:
+            rp = os.path.join(rd, rid, "reflection.md")
+            if os.path.isfile(rp):
+                with open(rp, "r", encoding="utf-8") as f:
+                    recent.append("[" + rid + "] " + f.read()[:300])
+        if len(recent) < 3:
+            return
+
+        mp = os.path.join(self.workspace, "MEMORY.md")
+        cm = ""
+        if os.path.isfile(mp):
+            with open(mp, "r", encoding="utf-8") as f:
+                cm = f.read()[:2000]
+
+        prompt = "Analyze recent session reflections for patterns.\n\n" + "\n".join(recent) + "\n\nCurrent MEMORY.md:\n" + cm + "\n\nOutput ONLY JSON with: patterns, anti_patterns, user_trends, memory_updates (all lists of strings)."
+        try:
+            resp = self.model.chat(messages=[{"role": "user", "content": prompt}], tools=None, max_tokens=500)
+            data = json.loads(resp.get("content", "{}"))
+        except Exception:
+            return
+
+        from memory_tool import memory_add
+        for fact in data.get("memory_updates", []):
+            memory_add("memory", fact, self.workspace)
+        for ap in data.get("anti_patterns", []):
+            memory_add("memory", "[ANTI-PATTERN] " + ap, self.workspace)
+        self.change_manifest.record("deep_reflect", {"patterns": len(data.get("patterns", [])), "anti_patterns": len(data.get("anti_patterns", []))})
+
+    def _resolve_thinking(self, consecutive_failures: int) -> ThinkingMode:
+        if consecutive_failures >= 2:
+            return ThinkingMode.THINK_MAX
+        if consecutive_failures >= 1:
+            return ThinkingMode.THINK_HIGH
+        return self.model.thinking
