@@ -65,7 +65,7 @@ class TemporalTree:
     """层级时间记忆树。
 
     结构示例：
-    User: 正元
+    User: $NAME
     ├── Preferences
     │   ├── [v1] 偏好简洁回复 (conf:0.9)
     │   └── [v2] 样式精度要求高 (conf:0.95)

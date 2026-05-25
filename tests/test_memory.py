@@ -10,10 +10,10 @@ class TestTemporalTree:
 
     def test_add_node(self, temporal_tree):
         """添加节点后应能检索到。"""
-        node = temporal_tree.add("正元偏好简洁回复", category="Preferences",
+        node = temporal_tree.add("用户偏好简洁回复", category="Preferences",
                                  confidence=0.9)
         assert node.id is not None
-        assert node.content == "正元偏好简洁回复"
+        assert node.content == "用户偏好简洁回复"
         assert node.status == "created"
 
         results = temporal_tree.search("偏好")

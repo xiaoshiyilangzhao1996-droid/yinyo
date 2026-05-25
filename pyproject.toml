@@ -9,7 +9,7 @@ description = "YINYO (隐曜) — An Autonomous Feishu Agent That Learns"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "王正元", email = "wangzhengyuan@example.com"},
+    {name = "Yinyo Contributors", email = "yinyo@example.com"},
 ]
 keywords = ["ai", "agent", "feishu", "lark", "llm", "deepseek", "react"]
 classifiers = [

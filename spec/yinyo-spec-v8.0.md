@@ -130,7 +130,7 @@ def delegate_task(goal: str, context: str = "") -> dict
 │  LLM 扫描 情景记忆 → 提取事实 → 存入 TemporalTree。   │
 │                                                      │
 │  TemporalTree 结构（层级时间树）：                      │
-│  User: 正元                                           │
+│  User: $NAME                                          │
 │  ├── Preferences                                     │
 │  │   ├── [v1 05-20] 偏好简洁回复 (conf:0.9)           │
 │  │   └── [v2 05-25] 样式精度要求极高 (conf:0.95)      │

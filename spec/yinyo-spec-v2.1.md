@@ -1129,7 +1129,7 @@ DeepSeek 优化 | 通用 | 通用 | 适配 | 通用 | **✅ Context Caching + �
 保留 Change Manifest | 隐曜 v1 | agent 自省基础
 **本 Spec 版本：** v2.0 | **最后更新：** 2026-05-22
 **融合来源：** 隐曜 v1 + 大管家 + OpenClaw 三方 Spec 深度比对后重新整合
-**下一步：** 正元审阅 → 确认 v2 Spec → 进入 Phase 1 Skeleton Implementation
+**下一步：** 用户审阅 → 确认 v2 Spec → 进入 Phase 1 Skeleton Implementation
 
 
 8.4 v2.0 → v2.1 变更清单
