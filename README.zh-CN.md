@@ -118,6 +118,8 @@ export DEEPSEEK_API_KEY="sk-..."
 
 | 版本 | 日期 | 关键变更 | 通过率 |
 |------|------|----------|--------|
+| v8.1 | 2026-05-25 | AHE 工程层、57 项测试套件、可编程 mock | 100% |
+| v8.0 | 2026-05-25 | Dual-Process 记忆、Vision、子Agent、Provider Chain、Trace2Skill | 100% |
 | v7.0 | 2026-05-25 | LLM 压缩、自动/深度反思、AGENTS.md | 100% |
 | v6.0 | 2026-05-24 | USER.md、MEMORY.md、do_memory 工具 | 100% |
 | v5.0 | 2026-05-23 | 独立飞书产品、飞书 12 项适配 | 100% |

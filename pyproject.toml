@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yinyo-agent"
-version = "7.0.0"
+version = "8.1.0"
 description = "YINYO (隐曜) — An Autonomous Feishu Agent That Learns"
 readme = "README.md"
 license = {text = "MIT"}

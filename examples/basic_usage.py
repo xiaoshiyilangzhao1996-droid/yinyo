@@ -19,5 +19,5 @@ Usage:
 
 from .agent import YinyoAgent
 
-__version__ = "7.0.0"
+__version__ = "8.1.0"
 __all__ = ["YinyoAgent"]

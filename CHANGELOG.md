@@ -4,6 +4,51 @@ All notable changes to YINYO (隐曜) will be documented in this file.
 
 ---
 
+## [v8.1] — 2026-05-25
+
+### Added
+- **AHE-inspired Engineering Layer**: `_auto_manifest()` generates LLM-powered Change Manifests after each run (~$0.0003). `verify_manifest()` auto-updates status to verified/reverted after blind test.
+- **ChangeManifest upgrade**: Structured manifests with `status`/`verdict`/`blind_test` fields, `get_latest_verified_run()` for rollback, `list_manifests()` for querying.
+- **Comprehensive Test Suite**: 57 tests (17 memory + 8 model + 12 tools + 8 agent + 12 edge cases). Mock-based, zero external API dependency.
+- **Programmable mock**: `model.set_mock_responses()` for deterministic ReAct loop testing.
+
+### Changed
+- `evolution.py`: ChangeManifest upgraded with structured manifest lifecycle (draft → verified/reverted).
+- `agent.py`: +87 lines (_auto_manifest + verify_manifest methods).
+- `tests/`: 7 new test files with shared conftest.py fixtures.
+
+---
+
+## [v8.0] — 2026-05-25
+
+### Added
+- **Dual-Process + TemporalTree Memory**: Fusion of Dual-Process (arXiv:2605.17625) + TiMem temporal tree (arXiv:2601.02845) + Mem0 Multi-Scope. Facts evolve through lifecycle: created → confirmed → superseded → archived.
+- **vision_adapter.py** (~120 lines): External vision model adapter (GPT-4o-mini Vision). New `do_vision` tool.
+- **delegate.py** (~200 lines): Supervisor-Worker subagent pattern with full context sharing. New `delegate_task` tool.
+- **Provider Chain**: `model.py` supports cross-provider fallback (DeepSeek Flash → Pro → GLM).
+- **Trace2Skill**: `SkillEvolution` class — failure detection → LLM skill extraction → auto-loading → cross-session fusion.
+- **Feishu image handling**: Auto-detect image messages, download, call do_vision, inject text description.
+- **FactExtractor**: LLM-powered fact extraction from conversations, stored in TemporalTree.
+
+### Changed
+- `memory.py`: Complete rewrite (213 → 450 lines). TemporalTree with supersede mechanism, FactExtractor.
+- `memory_tool.py`: +80 lines (Multi-Scope, supersede, audit operations). MEMORY_LIMIT 2,200 → 10,000.
+- `model.py`: +50 lines (provider_chain with `_build_provider_chain()`).
+- `evolution.py`: +150 lines (SkillEvolution class).
+- `tools.py`: +60 lines (do_vision + delegate_task registrations, `execute()` method). Tools: 8 → 10.
+- `agent.py`: +60 lines (skill auto-load, memory model injection, provider chain integration).
+- `feishu_adapter.py`: +90 lines (image message detection + download + vision pipeline).
+- Total: ~2,900 → ~5,200 lines. 14 → 16 .py files.
+
+### References
+- Dual-Process Memory: arXiv:2605.17625 (May 2026)
+- TiMem Temporal Memory Tree: arXiv:2601.02845
+- Mem0 Multi-Scope: ECAI 2025 (92.5 LoCoMo)
+- Cognition.ai "Don't Build Multi-Agents" (context sharing principles)
+- Trace2Skill: AHE self-evolution concept
+
+---
+
 ## [v7.0] — 2026-05-25
 
 ### Added

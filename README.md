@@ -118,6 +118,8 @@ User Message (Feishu)
 
 | Version | Date | Highlights | Pass Rate |
 |---------|------|-----------|-----------|
+| v8.1 | 2026-05-25 | AHE engineering layer, 57-test suite, programmable mock | 100% |
+| v8.0 | 2026-05-25 | Dual-Process memory, Vision, SubAgent, Provider Chain, Trace2Skill | 100% |
 | v7.0 | 2026-05-25 | LLM compression, auto/deep-reflect, AGENTS.md | 100% |
 | v6.0 | 2026-05-24 | USER.md, MEMORY.md, do_memory tool | 100% |
 | v5.0 | 2026-05-23 | Independent Feishu product, 12 Feishu UX items | 100% |
