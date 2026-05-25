@@ -147,6 +147,11 @@ class ModelGateway:
     def _mock_response(self, messages: list, model: str, tools: list = None) -> dict:
         last = messages[-1]["content"] if messages else ""
         tool_names = [t["function"]["name"] for t in tools] if tools else []
+
+        # v8.1: Programmable mock — if _mock_queue is set, consume from it
+        if hasattr(self, '_mock_queue') and self._mock_queue:
+            return self._mock_queue.pop(0)
+
         if "do_read" in tool_names and "read" in last.lower():
             return {
                 "content": "", "model": model + "-mock",
@@ -163,6 +168,19 @@ class ModelGateway:
             "usage": {"prompt_tokens": 100, "completion_tokens": 10},
             "finish_reason": "stop",
         }
+
+    def set_mock_responses(self, responses: list[dict]):
+        """v8.1: 设置可编程 mock 响应队列。每次 chat() 调用依次消费。
+
+        Args:
+            responses: List of response dicts, each containing content/tool_calls/finish_reason.
+                       Example: [{"content": "done", "finish_reason": "stop"}]
+        """
+        self._mock_queue = list(responses)
+
+    def clear_mock_responses(self):
+        """清空 mock 队列。"""
+        self._mock_queue = []
 
     @property
     def cache_stats(self) -> dict:
