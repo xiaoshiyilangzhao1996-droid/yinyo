@@ -319,13 +319,106 @@ class SkillEvolution:
 # ═══════════════════════════════════════════════════════
 
 class ChangeManifest:
+    """v8.1: AHE-inspired structured change tracking.
+
+    Manifests lifecycle: draft → (blind test) → verified / reverted / partial.
+    """
+
     def __init__(self, workspace: str):
         self.path = os.path.join(workspace, "changes.jsonl")
+        self._manifests_dir = os.path.join(workspace, "manifests")
+        os.makedirs(self._manifests_dir, exist_ok=True)
 
     def record(self, change_type: str, detail: dict):
+        """记录变更（flat JSONL，向后兼容）。"""
         entry = {"ts": datetime.now(timezone.utc).isoformat(), "type": change_type, "detail": detail}
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def create_manifest(self, run_id: str, change_type: str, change_summary: str,
+                        affected_files: list, blind_test_result: dict = None) -> dict:
+        """v8.1: 创建结构化 Change Manifest。
+
+        Args:
+            run_id: 关联的 run ID
+            change_type: feat / fix / refactor / docs / test
+            change_summary: 变更摘要（LLM 生成）
+            affected_files: 受影响的文件列表
+            blind_test_result: 盲测结果 {"pass_rate": N/12, "status": "pass/fail"}
+
+        Returns:
+            manifest dict with status, verdict, and metadata
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        status = "draft"
+        verdict = None
+
+        if blind_test_result:
+            if blind_test_result.get("status") == "pass":
+                status = "verified"
+                verdict = "keep"
+            else:
+                status = "reverted"
+                verdict = "revert"
+
+        manifest = {
+            "manifest_id": f"m-{run_id}",
+            "run_id": run_id,
+            "ts": now,
+            "change_type": change_type,
+            "summary": change_summary,
+            "affected_files": affected_files,
+            "status": status,
+            "verdict": verdict,
+            "blind_test": blind_test_result or {},
+        }
+
+        # 写 JSON 文件
+        manifest_path = os.path.join(self._manifests_dir, f"{run_id}.json")
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+        # 同时追加到 changes.jsonl
+        self.record("manifest_created", {
+            "manifest_id": manifest["manifest_id"],
+            "status": status,
+            "verdict": verdict,
+        })
+
+        return manifest
+
+    def get_latest_verified_run(self) -> str | None:
+        """获取最近一个通过验证的 run_id（用于回滚）。"""
+        if not os.path.isdir(self._manifests_dir):
+            return None
+        manifests = []
+        for f in os.listdir(self._manifests_dir):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(self._manifests_dir, f)) as fh:
+                        m = json.load(fh)
+                    if m.get("status") == "verified" and m.get("verdict") == "keep":
+                        manifests.append((m["ts"], m))
+                except Exception:
+                    pass
+        manifests.sort(key=lambda x: x[0], reverse=True)
+        return manifests[0][1]["run_id"] if manifests else None
+
+    def list_manifests(self, status: str = None, limit: int = 20) -> list[dict]:
+        """列出 manifests，可按 status 过滤。"""
+        if not os.path.isdir(self._manifests_dir):
+            return []
+        result = []
+        for f in sorted(os.listdir(self._manifests_dir), reverse=True):
+            if f.endswith(".json"):
+                try:
+                    with open(os.path.join(self._manifests_dir, f)) as fh:
+                        m = json.load(fh)
+                    if status is None or m.get("status") == status:
+                        result.append(m)
+                except Exception:
+                    pass
+        return result[:limit]
 
 
 @dataclass

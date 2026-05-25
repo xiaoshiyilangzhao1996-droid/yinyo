@@ -274,9 +274,96 @@ class YinyoAgent:
         if self.run_count % 10 == 0:
             self._deep_reflect()
 
+        # v8.1: AHE-inspired — 自动生成 Change Manifest
+        self._auto_manifest(run_id, task, summary_text, final_status)
+
         return {"run_id": run_id, "status": final_status, "steps": self.current_step,
                 "tools_used": list(set(self.tool_sequence)), "evidence_file": "runs/" + run_id + "/evidence.jsonl",
                 "reflection": reflection}
+
+    def _auto_manifest(self, run_id: str, task: str, summary: str, status: str):
+        """v8.1: 每次 run 结束，LLM 自动生成轻量 Change Manifest。
+
+        AHE 之神（变更可追溯、验证自动化）+ DeepSeek 之器（LLM 替代规则引擎）。
+        成本：~$0.0003/run。
+        """
+        # 检测是否有值得记录的变更
+        tool_set = list(set(self.tool_sequence))
+        if not tool_set or len(tool_set) <= 1:
+            # 纯对话 run，无工具变更，不生成 manifest
+            return
+
+        # 检测受影响的文件
+        affected = []
+        for fn, args, _ in getattr(self, '_last_tool_results', []):
+            for k in ("path", "file"):
+                if k in args:
+                    affected.append(args[k])
+
+        if not affected:
+            return
+
+        # LLM 生成变更摘要
+        prompt = (
+            "Summarize this agent run as a one-line change manifest. "
+            "Output ONLY a JSON object: {change_type: 'feat'|'fix'|'refactor'|'docs'|'test', "
+            "summary: 'one sentence describing what changed'}\n\n"
+            f"Task: {task[:150]}\n"
+            f"Tools used: {tool_set}\n"
+            f"Files: {affected[:5]}\n"
+            f"Status: {status}"
+        )
+        try:
+            resp = self.model.chat(
+                messages=[{"role": "user", "content": prompt}],
+                tools=None, max_tokens=200,
+            )
+            data = json.loads(resp.get("content", "{}"))
+        except Exception:
+            data = {"change_type": "feat", "summary": summary[:200]}
+
+        # 创建 draft manifest（盲测通过后自动变为 verified）
+        self.change_manifest.create_manifest(
+            run_id=run_id,
+            change_type=data.get("change_type", "feat"),
+            change_summary=data.get("summary", summary[:200]),
+            affected_files=list(set(affected)),
+            blind_test_result=None,  # draft — 等盲测后更新
+        )
+
+    def verify_manifest(self, run_id: str, blind_test_pass: bool, pass_rate: str = ""):
+        """v8.1: 盲测完成后，更新 manifest 状态。
+
+        盲测通过 → verified/keep；失败 → reverted/revert。
+        """
+        manifest_path = os.path.join(self.workspace, "manifests", f"{run_id}.json")
+        if not os.path.isfile(manifest_path):
+            return
+
+        with open(manifest_path, "r") as f:
+            manifest = json.load(f)
+
+        manifest["blind_test"] = {
+            "status": "pass" if blind_test_pass else "fail",
+            "pass_rate": pass_rate,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if blind_test_pass:
+            manifest["status"] = "verified"
+            manifest["verdict"] = "keep"
+        else:
+            manifest["status"] = "reverted"
+            manifest["verdict"] = "revert"
+
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+        self.change_manifest.record("manifest_verified", {
+            "run_id": run_id,
+            "blind_test_pass": blind_test_pass,
+            "verdict": manifest["verdict"],
+        })
 
     def _reflect_on_run(self, task: str, summary: str, run_id: str, run_dir: str) -> str:
         """v7.0: LLM reflect after each run. v8.0: also feeds into TemporalTree via extract_and_store."""
