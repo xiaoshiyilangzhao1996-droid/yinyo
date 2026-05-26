@@ -1,4 +1,4 @@
-# context.py — Context Manager v7.0（LLM 结构化压缩 + DeepSeek 高适配）
+# context.py — Context Manager v8.1（LLM 结构化压缩 + DeepSeek 高适配）
 import os, json
 from datetime import datetime, timezone
 

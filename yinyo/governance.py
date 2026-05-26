@@ -1,5 +1,5 @@
-# governance.py — Risk Policy + Secret Scanner v3.0
-import re
+# governance.py — Risk Policy + Secret Scanner v8.1
+import re, os
 from dataclasses import dataclass
 
 @dataclass
@@ -31,7 +31,6 @@ class RiskPolicy:
             return GateResult("confirm", prompt=f"Confirm {action_type}?")
         return GateResult("allow")
 
-    # ★ 审计修复: gate_for_tool — 按工具名和参数判断，在 execute_tool_with_evidence 中调用
     def gate_for_tool(self, tool_name: str, args: dict) -> GateResult:
         """根据工具名和参数判断风险等级。"""
         path = args.get("path", "")
@@ -57,15 +56,18 @@ class RiskPolicy:
 
     def _in_workspace(self, path: str) -> bool:
         """检查 path 是否在 workspace 内。"""
-        import os
         abs_path = os.path.abspath(path)
         abs_workspace = os.path.abspath(self.workspace)
         return abs_path.startswith(abs_workspace)
 
 
-# Secret patterns
+# Secret patterns (v3.1: BU-03 修复 — 增加无引号格式)
 SECRET_PATTERNS = [
+    # 引号包围的值（原有）
     r'(?i)(api[_-]?key|token|secret|password|auth)\s*[:=]\s*[\'"][^\'"]+[\'"]',
+    # 无引号值（BU-03 修复）：key=value 或 key: value，最少 8 字符防误报
+    r'(?i)(api[_-]?key|token|secret|password|auth)\s*[:=]\s*([^\s\'"\n]{8,})',
+    # 已知 secret 前缀格式
     r'sk-[a-zA-Z0-9]{20,}',
     r'ghp_[a-zA-Z0-9]{36}',
     r'github_pat_[a-zA-Z0-9_]{36,}',

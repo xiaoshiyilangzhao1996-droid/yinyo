@@ -1,10 +1,10 @@
-# evolution.py — Trace2Skill 自进化闭环 v8.0
+# evolution.py — Trace2Skill 自进化闭环 v8.1
 """从失败中提取技能，自动加载，跨 session 融合。
 
 v8.0 新增：SkillEvolution（失败检测→提取→自动加载→融合闭环）。
 """
 
-import os, json, hashlib, glob as _glob
+import os, json, hashlib, re, glob as _glob
 from datetime import datetime, timezone
 from enum import Enum
 from dataclasses import dataclass, field
@@ -309,7 +309,6 @@ class SkillEvolution:
 
     def _extract_keywords(self, text: str) -> list:
         """中文关键词提取（简单版：2-4字高频词）。"""
-        import re
         words = re.findall(r'[\u4e00-\u9fff]{2,4}', text)
         return list(set(words))[:5]
 

@@ -73,7 +73,7 @@ result = agent.run("分析这份数据并生成报告")
 |------|------|
 | 处理飞书消息 | `agent.handle_message(user_id, chat_id, text)` |
 | 运行任务 | `agent.run("任务描述")` |
-| 查看记忆 | `agent.memory.pprint()` |
+| 查看记忆 | `agent.memory.get_memory_summary()` |
 | 运行测试 | `pytest tests/ -v` |
 | 查看版本 | `python -c "from yinyo import __version__; print(__version__)"` |
 

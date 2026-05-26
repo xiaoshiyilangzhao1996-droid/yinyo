@@ -77,6 +77,14 @@ class SessionManager:
         parts = text.strip().split()
         cmd = parts[0].lower()
 
+        # v8.2: /continue [N] 必须在精确匹配 /continue 之前检查
+        if cmd.startswith('/continue') and len(parts) > 1:
+            try:
+                n = int(parts[1])
+                return {"text": self._restore_session(session.user_id, n)}
+            except ValueError:
+                return {"text": f"用法: /continue [编号]。输入 /continue 查看可用会话。"}
+
         if cmd == '/help':
             return {"text": COMMAND_HELP}
 
@@ -93,13 +101,6 @@ class SessionManager:
 
         elif cmd == '/continue':
             return {"text": self._list_sessions(session.user_id)}
-
-        elif cmd.startswith('/continue') and len(parts) > 1:
-            try:
-                n = int(parts[1])
-                return {"text": self._restore_session(session.user_id, n)}
-            except ValueError:
-                return {"text": f"用法: /continue [编号]。输入 /continue 查看可用会话。"}
 
         return {"text": f"未知命令: {cmd}。输入 /help 查看可用命令。"}
 

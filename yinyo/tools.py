@@ -1,6 +1,46 @@
-# tools.py — 原子工具系统 v3.0（7 个工具 + 完整 evidence 管线）
-import os, json, hashlib, subprocess, glob
+# tools.py — 原子工具系统 v8.1（BU-01/BU-02 安全修复）
+import os, json, hashlib, subprocess, glob, re
 from typing import Callable, get_type_hints
+
+# ============================================================
+# 路径安全（v8.1: BU-01/BU-02 修复）
+# ============================================================
+
+_tool_workspace = os.path.abspath(".")
+
+# v8.1: 由 agent.py 在 init 时设置，供 delegate_task 使用（替代 __main__ 注入）
+_yinyo_agent = None
+
+def set_tool_workspace(workspace: str):
+    """设置工具层的 workspace 路径，用于路径穿越防护。agent.py 在 init 时调用。"""
+    global _tool_workspace
+    _tool_workspace = os.path.abspath(workspace)
+
+def _validate_path(path: str) -> str:
+    """安全路径校验：拒绝绝对路径 + 路径穿越。返回规范化后的安全路径。
+    
+    规则：
+    1. 拒绝绝对路径（如 /etc/passwd, C:\\Windows\\...）
+    2. realpath 规范化 + workspace 范围检查
+    """
+    # 规则1: 拒绝绝对路径（含 Unix 风格，如 /etc/passwd）
+    if os.path.isabs(path) or path.startswith("/"):
+        raise PermissionError(f"Absolute paths not allowed: {path}")
+    
+    # 规则2: realpath 规范化 + workspace 范围检查
+    safe = os.path.realpath(os.path.join(_tool_workspace, path))
+    ws = os.path.realpath(_tool_workspace)
+    if not safe.startswith(ws + os.sep) and safe != ws:
+        raise PermissionError(f"Path traversal blocked: {path}")
+    
+    return safe
+
+# 危险命令模式（BU-02: 内联检查，防止直接 import do_run 绕过 governance）
+_DANGEROUS_COMMANDS = [
+    r"rm\s+-rf\s+/", r"dd\s+if=", r"mkfs", r">\s*/dev/", r"chmod\s+777\s+/",
+    r"\breboot\b", r"\bshutdown\b", r":\(\)\s*\{\s*:\|:&\s*\};:",
+    r"curl.*\|.*sh", r"wget.*\|.*sh",
+]
 
 class Tool:
     def __init__(self, name: str, fn: Callable, schema: dict, permission: str):
@@ -45,7 +85,6 @@ def _build_json_schema(name: str, doc: str, hints: dict) -> dict:
         json_type = type_map.get(ptype, "string")
         properties[pname] = {"type": json_type}
         required.append(pname)
-    # OpenAI tool-calling 格式（不带 "type": "function" 包装层）
     return {
         "type": "function",
         "function": {
@@ -57,18 +96,22 @@ def _build_json_schema(name: str, doc: str, hints: dict) -> dict:
 
 
 # ============================================================
-# 7 个原子工具
+# 8 个原子工具（v8.1: 全部内置路径校验）
 # ============================================================
 
 @tool(permission="ALLOW")
 def do_read(path: str, offset: int = 1, limit: int = 500) -> dict:
     """Read a file with line numbers. Returns content and total lines."""
-    if not os.path.isfile(path):
+    try:
+        safe = _validate_path(path)
+    except PermissionError as e:
+        return {"error": str(e)}
+    if not os.path.isfile(safe):
         return {"error": f"File not found: {path}"}
     sensitive = {".env", ".key", ".token", ".pem", "credentials", "secrets"}
     if any(s in path.lower() for s in sensitive):
         return {"error": "Access denied: sensitive file"}
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    with open(safe, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     total = len(lines)
     selection = lines[offset-1:offset-1+limit]
@@ -79,12 +122,16 @@ def do_read(path: str, offset: int = 1, limit: int = 500) -> dict:
 @tool(permission="CONFIRM")
 def do_write(path: str, content: str, append: bool = False) -> dict:
     """Write content to a file. Returns bytes written and sha256 hash."""
+    try:
+        safe = _validate_path(path)
+    except PermissionError as e:
+        return {"error": str(e)}
     mode = "a" if append else "w"
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, mode, encoding="utf-8") as f:
+    os.makedirs(os.path.dirname(safe) or ".", exist_ok=True)
+    with open(safe, mode, encoding="utf-8") as f:
         f.write(content)
-    size = os.path.getsize(path)
-    with open(path, "rb") as f:
+    size = os.path.getsize(safe)
+    with open(safe, "rb") as f:
         h = hashlib.sha256(f.read()).hexdigest()[:16]
     return {"wrote": len(content.encode("utf-8")), "path": path, "hash": f"sha256:{h}", "size": size}
 
@@ -92,14 +139,18 @@ def do_write(path: str, content: str, append: bool = False) -> dict:
 @tool(permission="ALLOW")
 def do_search(query: str, path: str = ".", file_glob: str = "*", mode: str = "content") -> dict:
     """Search file contents (mode='content') or find files by name (mode='files')."""
+    try:
+        safe_path = _validate_path(path)
+    except PermissionError as e:
+        return {"error": str(e)}
     results = []
     if mode == "files":
-        for f in glob.glob(os.path.join(path, "**", file_glob), recursive=True):
+        for f in glob.glob(os.path.join(safe_path, "**", file_glob), recursive=True):
             if os.path.isfile(f):
                 results.append({"path": f, "size": os.path.getsize(f)})
         return {"mode": "files", "count": len(results), "results": results[:50]}
     if mode == "content":
-        for fp in glob.glob(os.path.join(path, "**", file_glob), recursive=True):
+        for fp in glob.glob(os.path.join(safe_path, "**", file_glob), recursive=True):
             if not os.path.isfile(fp) or os.path.getsize(fp) > 1_000_000:
                 continue
             try:
@@ -108,7 +159,7 @@ def do_search(query: str, path: str = ".", file_glob: str = "*", mode: str = "co
                         if query.lower() in line.lower():
                             results.append({"file": fp, "line": i, "content": line.strip()[:200]})
                             if len(results) >= 50: break
-            except: pass
+            except (OSError, UnicodeDecodeError): pass
             if len(results) >= 50: break
         return {"mode": "content", "query": query, "count": len(results), "results": results}
     return {"error": f"Unknown mode: {mode}"}
@@ -117,7 +168,10 @@ def do_search(query: str, path: str = ".", file_glob: str = "*", mode: str = "co
 @tool(permission="CONFIRM")
 def do_run(command: str, timeout: int = 60, workdir: str = ".") -> dict:
     """Execute a shell command. Returns stdout, stderr, and exit_code."""
-    # 危险命令拦截信任 governance.gate_for_tool 层（GAP-7 修复）
+    # v8.1 BU-02修复: 内联危险命令检查（防止直接 import do_run 绕过 governance）
+    for d in _DANGEROUS_COMMANDS:
+        if re.search(d, command):
+            return {"error": f"Blocked dangerous command: {command[:100]}", "exit_code": -1}
     try:
         r = subprocess.run(command, shell=True, capture_output=True, text=True,
                           timeout=timeout, cwd=workdir)
@@ -164,17 +218,20 @@ def do_edit(path: str, old_string: str, new_string: str, replace_all: bool = Fal
         new_string: Replacement text (empty string '' to delete)
         replace_all: Replace all occurrences instead of requiring unique match
     """
-    if not os.path.isfile(path):
+    try:
+        safe = _validate_path(path)
+    except PermissionError as e:
+        return {"error": str(e)}
+    if not os.path.isfile(safe):
         return {"error": f"File not found: {path}"}
     
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    with open(safe, "r", encoding="utf-8", errors="replace") as f:
         original = f.read()
     
     count = original.count(old_string)
     if count == 0:
         return {"error": "String not found in file", "searched": old_string[:100]}
     if count > 1 and not replace_all:
-        # 找到所有匹配位置
         positions = []
         pos = original.find(old_string)
         while pos != -1:
@@ -186,14 +243,12 @@ def do_edit(path: str, old_string: str, new_string: str, replace_all: bool = Fal
     
     new_content = original.replace(old_string, new_string)
     
-    # 写回文件
-    with open(path, "w", encoding="utf-8") as f:
+    with open(safe, "w", encoding="utf-8") as f:
         f.write(new_content)
     
-    with open(path, "rb") as f:
+    with open(safe, "rb") as f:
         h = hashlib.sha256(f.read()).hexdigest()[:16]
     
-    # 生成 diff 预览
     diff_lines = []
     old_lines = old_string.split("\n")
     new_lines = new_string.split("\n")
@@ -227,10 +282,14 @@ def do_patch(path: str, patch_content: str) -> dict:
     
     Multiple hunks supported.
     """
-    if not os.path.isfile(path):
+    try:
+        safe = _validate_path(path)
+    except PermissionError as e:
+        return {"error": str(e)}
+    if not os.path.isfile(safe):
         return {"error": f"File not found: {path}"}
     
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    with open(safe, "r", encoding="utf-8", errors="replace") as f:
         original_lines = f.readlines()
     
     # 解析 V4A patch
@@ -254,7 +313,6 @@ def do_patch(path: str, patch_content: str) -> dict:
     if not hunks:
         return {"error": "No valid hunks found in patch"}
     
-    # 应用每个 hunk（在原始内容上逐步应用）
     result_lines = list(original_lines)
     for hunk in hunks:
         result_lines = _apply_hunk(result_lines, hunk)
@@ -265,10 +323,10 @@ def do_patch(path: str, patch_content: str) -> dict:
     if new_content == "".join(original_lines):
         return {"error": "Patch applied but no changes made"}
     
-    with open(path, "w", encoding="utf-8") as f:
+    with open(safe, "w", encoding="utf-8") as f:
         f.write(new_content)
     
-    with open(path, "rb") as f:
+    with open(safe, "rb") as f:
         h = hashlib.sha256(f.read()).hexdigest()[:16]
     
     return {
@@ -284,10 +342,8 @@ def do_patch(path: str, patch_content: str) -> dict:
 def _apply_hunk(lines: list, hunk: dict) -> list | None:
     """Apply a single hunk to lines. Returns modified lines or None on failure."""
     changes = hunk["changes"]
-    # 找 context 行定位
     context_lines = [c for c in changes if not c.startswith("-") and not c.startswith("+")]
     if not context_lines:
-        # 纯增删的 hunk：所有 - 行删除，所有 + 行追加
         to_remove = set()
         to_add = []
         for c in changes:
@@ -300,13 +356,11 @@ def _apply_hunk(lines: list, hunk: dict) -> list | None:
                 to_add.append(c[1:] + "\n")
         
         result = [l for i, l in enumerate(lines) if i not in to_remove]
-        # 在最后一个删除位置之后添加
         insert_pos = min(to_remove) if to_remove else len(result)
         for a in reversed(to_add):
             result.insert(insert_pos, a)
         return result
     
-    # 有 context：精确定位
     first_ctx = context_lines[0].strip() if context_lines[0].startswith(" ") else context_lines[0].lstrip("+- ").strip()
     match_pos = -1
     for i, l in enumerate(lines):
@@ -315,29 +369,25 @@ def _apply_hunk(lines: list, hunk: dict) -> list | None:
             break
     
     if match_pos < 0:
-        return None  # context 不匹配
+        return None
     
-    # 在匹配位置应用改动
     result = []
     change_idx = 0
     for i in range(len(lines)):
         if i < match_pos:
             result.append(lines[i])
             continue
-        # 在 context 区域
         while change_idx < len(changes) and i >= match_pos:
             c = changes[change_idx]
             if c.startswith("-"):
-                # 跳过该行（删除）
                 change_idx += 1
                 if i < len(lines) and lines[i].rstrip("\n") == c[1:]:
-                    pass  # 匹配，跳过
+                    pass
             elif c.startswith("+"):
                 result.append(c[1:] + "\n")
                 change_idx += 1
-                continue  # 不消费 lines[i]，继续处理下一个 change
+                continue
             else:
-                # context 行，匹配后消费
                 result.append(lines[i] if i < len(lines) else c + "\n")
                 change_idx += 1
                 break
@@ -346,9 +396,7 @@ def _apply_hunk(lines: list, hunk: dict) -> list | None:
                 result.append(lines[i])
             break
     
-    # 追加剩余 lines
     result.extend(lines[match_pos + len([c for c in changes if not c.startswith("+")]):])
-    # 追加剩余未处理的 + 行
     while change_idx < len(changes):
         c = changes[change_idx]
         if c.startswith("+"):
@@ -433,7 +481,6 @@ def execute_tool_with_evidence(registry: ToolRegistry, name: str, args: dict,
         if found:
             result["_redacted"] = True
             result["_found_secrets"] = len(found)
-            # ★ GAP-4 修复: 对 result 中的字符串字段实际脱敏
             for key in list(result.keys()):
                 if isinstance(result[key], str):
                     result[key] = _redact_fn(result[key])
@@ -521,8 +568,7 @@ def delegate_task(goal: str, context: str = "") -> dict:
         context: Additional context (optional, parent context is auto-shared)
     """
     from delegate import SubAgent
-    import __main__ as _main
-    agent = getattr(_main, '_yinyo_agent', None)
+    agent = _yinyo_agent
     if not agent:
         return {"error": "delegate_task: no parent agent found"}
 

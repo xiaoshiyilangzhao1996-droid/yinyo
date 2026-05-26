@@ -4,7 +4,34 @@ All notable changes to YINYO (隐曜) will be documented in this file.
 
 ---
 
-## [v8.1] — 2026-05-25
+## [v8.2] — 2026-05-26
+
+### Added
+- **超时保护**: Agent `max_runtime_seconds=300` 参数，ReAct 循环内墙钟检查，防止死循环影响生产环境。
+- **空响应检测**: 连续 3 次 LLM 返回空内容（无 tool_calls 且非 stop）自动停止。
+- **新测试模块**: `test_governance.py`（安全策略 17 项）、`test_evidence.py`（证据引擎 11 项）、`test_feishu.py`（飞书格式 11 项）、`test_evolution.py`（自进化 9 项）。总计 105 项全部通过。
+- **Spec v3.0**: 恢复被 v4.0 误覆盖的历史规格内容。
+
+### Fixed
+- **路径穿越漏洞 (BU-01)**: `_validate_path()` 拒绝绝对路径 + `realpath` 双重校验。覆盖全部 5 个文件操作工具。
+- **Governance 绕过 (BU-02)**: do_* 函数内置路径校验 + `do_run` 内联危险命令检查。不再依赖外层 Gate。
+- **密钥扫描漏报 (BU-03)**: `SECRET_PATTERNS` 新增无引号格式（`key=value`），最少 8 字符防误报。
+- **飞书双重去重 (P0)**: `handle_message()` 增加 `already_deduped` 参数，Adapter 层去重后不再二次拦截。
+- **`/stop` 不阻止执行 (P1)**: 非命令消息前检查 `session.stopped`，`/new` 恢复。
+- **`/continue 1` 不可达 (P2)**: 修复命令分支顺序，子命令在精确匹配前检查。
+- **CLI `--workspace` 无效 (P1)**: `main()` 用 argparse 重构，支持 `yinyo init --workspace /path`。
+- **`[project.scripts]` 缺失 (P1)**: `pyproject.toml` 增加 `yinyo = "yinyo.cli:main"` 入口。
+- **README `pprint()` 不存在 (P1)**: 改为 `agent.memory.get_memory_summary()`。
+
+### Changed
+- `SECRET_PATTERNS` 去重：`evidence.py` 改为 `from governance import`，消除重复定义。
+- `conftest.py`: workspace 简化从 `tmp_path/test_ws` 到 `tmp_path`。
+- `README.md`: badge 统一为 "Yinyo Contributors"。
+- 版本号统一: 全部源文件头标注 v8.1，`__init__` 和 `pyproject` 升到 8.2.0。
+
+### Security
+- 3 个安全漏洞修复（BU-01/BU-02/BU-03），通过第三方独立审计验证。
+- 新增 governance 安全策略测试 17 项。
 
 ### Added
 - **AHE-inspired Engineering Layer**: `_auto_manifest()` generates LLM-powered Change Manifests after each run (~$0.0003). `verify_manifest()` auto-updates status to verified/reverted after blind test.

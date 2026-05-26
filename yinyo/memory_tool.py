@@ -1,10 +1,11 @@
-# memory_tool.py — Memory CRUD Tool v8.0
+# memory_tool.py — Memory CRUD Tool v8.1
 """对标 Hermes memory tool（add/replace/remove），扩展 TemporalTree 操作。
 
 新增 v8.0 操作：supersede（事实取代）、audit（版本追溯）、search（Multi-Scope 检索）。
 """
 
 import os, json
+from memory import MemoryStore
 
 MEMORY_WORKSPACE: str | None = None
 
@@ -149,7 +150,6 @@ def memory_remove(target: str, old_text: str, workspace: str) -> dict:
 
 def memory_search(query: str, scopes: dict = None, limit: int = 5) -> dict:
     """Multi-Scope 语义检索（调用 TemporalTree）。"""
-    from memory import MemoryStore
     if not MEMORY_WORKSPACE:
         return {"ok": False, "error": "Memory workspace not set"}
 
@@ -167,7 +167,6 @@ def memory_search(query: str, scopes: dict = None, limit: int = 5) -> dict:
 
 def memory_supersede(old_node_id: str, new_content: str) -> dict:
     """用新事实取代旧事实。"""
-    from memory import MemoryStore
     if not MEMORY_WORKSPACE:
         return {"ok": False, "error": "Memory workspace not set"}
 
@@ -180,7 +179,6 @@ def memory_supersede(old_node_id: str, new_content: str) -> dict:
 
 def memory_audit(node_id: str) -> dict:
     """追溯事实的完整版本链。"""
-    from memory import MemoryStore
     if not MEMORY_WORKSPACE:
         return {"ok": False, "error": "Memory workspace not set"}
 

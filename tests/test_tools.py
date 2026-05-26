@@ -83,9 +83,11 @@ class TestBuiltinTools:
     """内置工具执行测试。"""
 
     def test_do_read(self, tmp_path):
-        from tools import do_read
-        path = str(tmp_path / "test.txt")
-        with open(path, "w") as f:
+        from tools import do_read, set_tool_workspace
+        set_tool_workspace(str(tmp_path))
+        path = "test.txt"  # relative path within workspace
+        full_path = str(tmp_path / path)
+        with open(full_path, "w") as f:
             f.write("line1\nline2\nline3\n")
 
         result = do_read(path=path)
@@ -94,33 +96,36 @@ class TestBuiltinTools:
 
     def test_do_read_not_found(self):
         from tools import do_read
-        result = do_read(path="/nonexistent/file.txt")
+        # 相对路径的非存在文件
+        result = do_read(path="nonexistent/file.txt")
         assert "error" in result
 
     def test_do_write_and_read(self, tmp_path):
-        from tools import do_write, do_read
-        path = str(tmp_path / "writing.txt")
+        from tools import do_write, do_read, set_tool_workspace
+        set_tool_workspace(str(tmp_path))
 
-        write_result = do_write(path=path, content="hello world")
+        write_result = do_write(path="writing.txt", content="hello world")
         assert write_result["wrote"] > 0
 
-        read_result = do_read(path=path)
+        read_result = do_read(path="writing.txt")
         assert "hello world" in read_result["content"]
 
     def test_do_search_files(self, tmp_path):
-        from tools import do_search
+        from tools import do_search, set_tool_workspace
+        set_tool_workspace(str(tmp_path))
         os.makedirs(str(tmp_path / "sub"), exist_ok=True)
 
-        result = do_search(query="*.py", path=str(tmp_path), mode="files", file_glob="*.py")
+        result = do_search(query="*.py", path=".", mode="files", file_glob="*.py")
         assert result["mode"] == "files"
 
     def test_do_search_content(self, tmp_path):
-        from tools import do_search
+        from tools import do_search, set_tool_workspace
+        set_tool_workspace(str(tmp_path))
         path = str(tmp_path / "search_test.txt")
         with open(path, "w") as f:
             f.write("needle in the haystack")
 
-        result = do_search(query="needle", path=str(tmp_path), mode="content")
+        result = do_search(query="needle", path=".", mode="content")
         assert result["count"] >= 1
 
     def test_do_memory_add(self, tmp_path):

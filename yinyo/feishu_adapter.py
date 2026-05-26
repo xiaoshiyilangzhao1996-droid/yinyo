@@ -1,8 +1,7 @@
-# feishu_adapter.py — 飞书适配层 v1.0
+# feishu_adapter.py — 飞书适配层 v8.1
 # Webhook 接收 + 消息路由 + 状态反馈 + 文件/媒体处理
 # 对标 GA fsapp.py + Hermes feishu.py + OpenClaw deliver.ts
-import json, os, time, re, hashlib, threading
-from datetime import datetime
+import json, os, time, re, threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from feishu_card import build_card_messages, build_text_payload, is_card_invalid_error
 
@@ -209,7 +208,6 @@ class FeishuAdapter:
             token = self._get_tenant_token()
             # 上传
             file_type = self._guess_file_type(ext)
-            file_size = os.path.getsize(file_path)
             with open(file_path, 'rb') as f:
                 upload_resp = http.post(
                     f"{FEISHU_API_BASE}/im/v1/files",
@@ -357,7 +355,7 @@ class FeishuAdapter:
             self.add_reaction(message_id)
 
         try:
-            result = self.agent.handle_message(user_id, chat_id, text)
+            result = self.agent.handle_message(user_id, chat_id, text, already_deduped=True)
         except Exception as e:
             result = {"text": f"❌ 处理出错: {e}", "files": []}
 
@@ -424,7 +422,7 @@ class FeishuAdapter:
             self.add_reaction(message_id)
 
         try:
-            result = self.agent.handle_message(user_id, chat_id, text)
+            result = self.agent.handle_message(user_id, chat_id, text, already_deduped=True)
         except Exception as e:
             result = {"text": f"\u274c 处理出错: {e}", "files": []}
 

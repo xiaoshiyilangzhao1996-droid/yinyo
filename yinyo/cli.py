@@ -203,28 +203,28 @@ def init_personal(target_dir: str) -> None:
 
 
 def main() -> None:
-    args = sys.argv[1:]
+    import argparse
 
-    if "--help" in args or "-h" in args or not args:
-        print("YINYO CLI")
-        print()
-        print("用法：")
-        print("  yinyo init             生成标准版（公开发行）SOUL / AGENTS / USER")
-        print("  yinyo init --personal  生成 YINYO-X 个人版（交互式问答）")
-        print()
-        print("标准版 YINYO 是面向所有人的飞书 Agent 产品。")
-        print("YINYO-X 是本地个人定制版，拥有你的个人偏好和记忆。")
-        return
+    parser = argparse.ArgumentParser(description="YINYO CLI")
+    sub = parser.add_subparsers(dest="command")
 
-    if args[0] == "init":
-        target = os.getcwd()
-        if "--personal" in args:
+    init_p = sub.add_parser("init", help="初始化 YINYO 项目")
+    init_p.add_argument("--workspace", "-w", default=None,
+                        help="目标目录（默认当前目录）")
+    init_p.add_argument("--personal", action="store_true",
+                        help="生成 YINYO-X 个人版")
+
+    args = parser.parse_args()
+
+    if args.command == "init":
+        target = args.workspace or os.getcwd()
+        if args.personal:
             init_personal(target)
         else:
             init_standard(target)
         return
 
-    print(f"未知命令：{args[0]}。试试 yinyo --help")
+    parser.print_help()
 
 
 if __name__ == "__main__":

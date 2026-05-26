@@ -1,14 +1,10 @@
-# evidence.py — Evidence Engine v3.0（三态验证 + Write hash 不丢失）
+# evidence.py — Evidence Engine v8.1（三态验证 + Write hash 不丢失）
 import json, os, re, hashlib
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from governance import SECRET_PATTERNS
 
-# Secret patterns（与 governance 保持同步）
-SECRET_PATTERNS = [
-    r'(?i)(api[_-]?key|token|secret|password|auth)\s*[:=]\s*[\'"][^\'"]+[\'"]',
-    r'sk-[a-zA-Z0-9]{20,}', r'ghp_[a-zA-Z0-9]{36}', r'github_pat_[a-zA-Z0-9_]{36,}',
-    r'(?i)Bearer\s+[a-zA-Z0-9\-_\.]{20,}', r'glpat-[a-zA-Z0-9\-_]{20,}',
-]
+# v8.1: SECRET_PATTERNS 从 governance 统一导入（消除重复定义）
 
 def _redact(text: str) -> str:
     for p in SECRET_PATTERNS:

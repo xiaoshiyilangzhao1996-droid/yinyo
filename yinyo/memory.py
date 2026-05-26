@@ -1,10 +1,10 @@
-# memory.py — Dual-Process + TemporalTree Memory v8.0
+# memory.py — Dual-Process + TemporalTree Memory v8.1
 """三层记忆架构：Episodic (原始对话) + Semantic (TemporalTree) + Retrieval (Multi-Scope)。
 
 融合方案：Dual-Process (arXiv:2605.17625) + TiMem 时间树 (arXiv:2601.02845) + Mem0 Multi-Scope。
 """
 
-import os, json, shutil, re, math, hashlib, uuid
+import os, json, shutil, re, math, uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from dataclasses import dataclass, field

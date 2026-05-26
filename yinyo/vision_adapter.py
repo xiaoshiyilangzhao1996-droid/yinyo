@@ -1,4 +1,4 @@
-# vision_adapter.py — 外部视觉模型适配器 v8.0
+# vision_adapter.py — 外部视觉模型适配器 v8.1
 """将图片转换为文本描述，注入 DeepSeek Agent 上下文。
 
 设计原则：DeepSeek V4 无原生 Vision API，用 adapter 模式桥接外部视觉模型。

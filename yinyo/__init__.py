@@ -13,7 +13,7 @@ from .memory_tool import memory_add, memory_replace, memory_remove, load_memory_
 from .vision_adapter import VisionAdapter, get_vision_adapter
 from .delegate import SubAgent, DelegateResult
 
-__version__ = "0.8.1"
+__version__ = "8.2.0"
 __all__ = [
     "YinyoAgent", "ModelGateway", "ThinkingMode",
     "Tool", "ToolRegistry", "tool", "registry",

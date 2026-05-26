@@ -4,12 +4,15 @@ Tests are organized as:
 - test_agent.py: Agent loop tests
 - test_tools.py: Tool execution tests
 - test_memory.py: Memory system tests
+- test_model.py: Model gateway tests
+- test_edge_cases.py: Edge case tests
+- test_governance.py: Governance / risk policy tests
+- test_evidence.py: Evidence ledger + verification tests
 - test_feishu.py: Feishu adapter tests
-- test_blind.py: Blind audit test suite (12 items)
+- test_evolution.py: Evolution / skill crystallization tests
 
 Run with:
     pytest tests/ -v
-    python tests/test_blind.py
 """
 
 def test_placeholder():

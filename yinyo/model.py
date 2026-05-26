@@ -1,4 +1,4 @@
-# model.py — Model Gateway v8.0（Provider Chain + DeepSeek 原生优化）
+# model.py — Model Gateway v8.1（Provider Chain + DeepSeek 原生优化）
 import os, json, time
 from enum import Enum
 from dataclasses import dataclass

@@ -1,5 +1,5 @@
-# agent.py — YINYO Agent Loop v8.0（Dual-Process + Provider Chain + Trace2Skill）
-import os, sys, json
+# agent.py — YINYO Agent Loop v8.2（超时保护 + 空响应检测 + /stop 停止）
+import os, sys, json, time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -15,14 +15,16 @@ from session import SessionManager
 
 
 class YinyoAgent:
-    """YINYO v8.0 — Dual-Process 记忆 + Provider Chain + SubAgent + Vision。"""
+    """YINYO v8.2 — 超时保护 + 空响应检测 + /stop 停止 + 双重去重修复。"""
 
     def __init__(self, workspace: str = ".", max_steps: int = 50,
                  thinking_mode: ThinkingMode = ThinkingMode.NON_THINK,
                  api_key: str = None, base_url: str = "https://api.deepseek.com",
-                 default_model: str = "deepseek-v4-flash"):
+                 default_model: str = "deepseek-v4-flash",
+                 max_runtime_seconds: int = 300):
         self.workspace = os.path.abspath(workspace)
         self.max_steps = max_steps
+        self.max_runtime_seconds = max_runtime_seconds  # v8.2: 超时保护
         os.makedirs(self.workspace, exist_ok=True)
 
         self.context = ContextManager(cache_dir=os.path.join(self.workspace, "cache"))
@@ -61,12 +63,20 @@ class YinyoAgent:
         self._run_selfcheck()
         self._autoload_yaml_tools()
 
-    def handle_message(self, user_id: str, chat_id: str, text: str) -> dict | None:
+    def handle_message(self, user_id: str, chat_id: str, text: str, already_deduped: bool = False) -> dict | None:
+        """处理一条用户消息。返回回复 dict 或 None（被去重/停止）。
+
+        Args:
+            already_deduped: 如果调用方已经做过去重（如飞书 adapter），设为 True。
+        """
         session = self.session_manager.get_or_create(user_id, chat_id)
         cmd_result = self.session_manager.handle_command(text, session)
         if cmd_result:
             return cmd_result
-        if self.session_manager.is_duplicate(text, user_id):
+        # v8.2: /stop 后不执行任何非命令消息，直到 /new
+        if session.stopped:
+            return None
+        if not already_deduped and self.session_manager.is_duplicate(text, user_id):
             return None
         session.add_user_message(text)
         result = self.run(text)
@@ -106,6 +116,8 @@ class YinyoAgent:
         consecutive_failures = 0
 
         run_dir = os.path.join(self.workspace, "runs", run_id)
+        start_time = time.time()  # v8.2: 超时保护
+        empty_response_count = 0  # v8.2: 空响应检测
         manifest = RunManifest(run_dir)
         manifest.create(run_id, task)
         evidence = EvidenceLedger(run_dir)
@@ -163,6 +175,9 @@ class YinyoAgent:
 
         # ── ReAct Loop ──
         while self.current_step < self.max_steps:
+            # v8.2: 超时保护
+            if time.time() - start_time > self.max_runtime_seconds:
+                raise TimeoutError(f"Agent runtime exceeded {self.max_runtime_seconds}s")
             self.current_step += 1
             self.context.auto_manage(self.current_step)
 
@@ -189,7 +204,12 @@ class YinyoAgent:
                     self.context.messages.append({"role": "assistant", "content": ac})
                 break
 
+            # v8.2: 无工具调用且非 stop → 空响应检测（防死循环）
             if not tool_calls:
+                empty_response_count += 1
+                if empty_response_count > 3:
+                    self.context.messages.append({"role": "user", "content": "[System: Too many empty responses. Stopping.]"})
+                    break
                 self.context.messages.append({"role": "assistant", "content": response.get("content", "")})
                 continue
 

@@ -1,4 +1,4 @@
-# delegate.py — 子Agent委托 v8.0
+# delegate.py — 子Agent委托 v8.1
 """监督者-工人（Supervisor-Worker）模式，支持并行任务执行。
 
 设计原则（Cognition.ai「Don't Build Multi-Agents」）：

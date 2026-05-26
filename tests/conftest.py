@@ -27,7 +27,7 @@ def mock_model():
 def mock_agent(mock_model, tmp_path):
     """返回一个配置好 mock model 的 YinyoAgent。"""
     from agent import YinyoAgent
-    ws = str(tmp_path / "test_ws")
+    ws = str(tmp_path)
     agent = YinyoAgent(workspace=ws, max_steps=10)
     agent.model = mock_model
     # 禁用 deep-reflect（避免干扰测试）
