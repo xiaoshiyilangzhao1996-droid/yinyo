@@ -187,6 +187,7 @@ For the live `card_fallback` smoke scenario, temporarily set `smoke_mode=true` i
 
 | Document | Purpose |
 |---|---|
+| [docs/getting-started.zh-CN.md](docs/getting-started.zh-CN.md) | Chinese getting-started guide for install, DeepSeek API key setup, Feishu app setup, and first run. |
 | [docs/external-testing.md](docs/external-testing.md) | GitHub tester guide for real Feishu validation and redacted bundle sharing. |
 | [docs/release-evidence-matrix.md](docs/release-evidence-matrix.md) | Public 3+6 and ETCLOVG evidence index. |
 | [docs/benchmarking.md](docs/benchmarking.md) | Hermes/OpenClaw comparison method and limits. |

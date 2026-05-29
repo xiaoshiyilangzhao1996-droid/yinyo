@@ -14,7 +14,7 @@
 
 YINYO 是一个按 Hermes 和 OpenClaw 这类 harness Agent 设计预期对标的聚焦型产品，不是通用聊天机器人包装层。它以飞书和 DeepSeek 作为第一产品落地面，把运行时网关、DeepSeek 优先模型网关、TemporalTree 记忆、Trace2Skill 进化、证据记录和发布门禁放进同一条可部署产品线。对标方法和边界见 [docs/benchmarking.md](docs/benchmarking.md)。
 
-[快速开始](#快速开始) · [外部测试](#外部测试) · [产品宪法](#产品宪法) · [它做什么](#它做什么) · [运行方式](#运行方式) · [发布状态](#发布状态) · [边界](#边界) · [校验](#校验)
+[快速开始](#快速开始) · [新手上手](#新手上手) · [外部测试](#外部测试) · [产品宪法](#产品宪法) · [它做什么](#它做什么) · [运行方式](#运行方式) · [发布状态](#发布状态) · [边界](#边界) · [校验](#校验)
 
 ---
 
@@ -31,6 +31,12 @@ yinyo serve --workspace ./workspace --profile local --transport ws
 ```bash
 yinyo serve --workspace ./workspace --dry-run
 ```
+
+---
+
+## 新手上手
+
+第一次下载安装、配置 DeepSeek API Key、创建飞书自建应用、启用长连接并启动服务，请看 [docs/getting-started.zh-CN.md](docs/getting-started.zh-CN.md)。它面向小白用户和协助安装的 Agent，和本 README 互补：README 负责项目主页，本页负责一步步跑起来。
 
 ---
 
@@ -173,6 +179,7 @@ live `card_fallback` smoke 场景需要临时在 `yinyo.env` 设置 `smoke_mode=
 
 | 文档 | 用途 |
 |---|---|
+| [docs/getting-started.zh-CN.md](docs/getting-started.zh-CN.md) | 中文新手入口：下载安装、DeepSeek API Key、飞书接入、启动运行。 |
 | [docs/external-testing.md](docs/external-testing.md) | GitHub 测试者真实飞书验证和脱敏 bundle 共享指南。 |
 | [README.md](README.md) | 英文 canonical 项目主页。 |
 | [docs/release-evidence-matrix.md](docs/release-evidence-matrix.md) | 公开 3+6 和 ETCLOVG 证据索引。 |
