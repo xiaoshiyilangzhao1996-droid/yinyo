@@ -12,7 +12,7 @@ All notable changes to YINYO are documented here.
   live evidence.
 - Documented the product/package version mapping: tag `v1.0.0-lite`, product
   version `1.0.0-lite`, Python package version `1.0.0rc1`.
-- Local validation: 355 tests passing.
+- Local validation: 356 tests passing.
 
 ## 0.1.0-alpha.1
 

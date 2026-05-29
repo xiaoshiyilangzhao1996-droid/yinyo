@@ -7,7 +7,7 @@
 ![Status](https://img.shields.io/badge/status-lite-2ea043)
 ![Version](https://img.shields.io/badge/version-1.0.0--lite-2ea043)
 ![Scope](https://img.shields.io/badge/scope-harness--agent-blue)
-![Tests](https://img.shields.io/badge/tests-355%20local-2ea043)
+![Tests](https://img.shields.io/badge/tests-356%20local-2ea043)
 ![Release](https://img.shields.io/badge/1.0-blocked%20by%20live%20smoke-d73a49)
 
 </div>

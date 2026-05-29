@@ -5,6 +5,8 @@ from __future__ import annotations
 import pathlib
 import re
 
+from yinyo.release_matrix import HARNESS_LAYER_MATRIX, RELEASE_MATRIX
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -79,15 +81,15 @@ def test_maintenance_release_gate_uses_real_wait_timeout():
 
 
 def test_readme_test_badges_match_current_local_count():
-    expected = "tests-355%20local"
+    expected = "tests-356%20local"
     for readme in ("README.md", "README.zh-CN.md"):
         text = (ROOT / readme).read_text(encoding="utf-8")
         assert expected in text
 
     for doc in ("CHANGELOG.md", "docs/roadmap.md"):
         text = (ROOT / doc).read_text(encoding="utf-8")
-        assert "355" in text
-        for stale in ("354", "353", "352", "350", "347", "330", "302", "293", "292", "291", "283", "282", "280", "278", "276", "274", "263", "262", "261", "260", "258", "256 tests", "256 local tests", "253", "252", "251", "249", "248", "247", "215", "221", "222", "223", "224", "225"):
+        assert "356" in text
+        for stale in ("355", "354", "353", "352", "350", "347", "330", "302", "293", "292", "291", "283", "282", "280", "278", "276", "274", "263", "262", "261", "260", "258", "256 tests", "256 local tests", "253", "252", "251", "249", "248", "247", "215", "221", "222", "223", "224", "225"):
             assert stale not in text
 
 
@@ -282,7 +284,7 @@ def test_external_testing_guide_is_linked_and_keeps_lite_boundary():
     assert "smoke-bundle" in guide
     assert "Do Not Share" in guide
     assert "External testers may run and report" in versioning
-    assert "355 local tests" in handoff
+    assert "356 local tests" in handoff
 
 
 def test_lite_release_notes_are_publishable_and_preserve_1_0_boundary():
@@ -362,3 +364,21 @@ def test_public_evidence_matrix_and_benchmarking_are_publishable():
     assert "placeholders are rejected" in deployment
     assert "docs/release-evidence-matrix.md" in verifier
     assert "docs/benchmarking.md" in verifier
+
+
+def test_public_evidence_matrix_matches_release_matrix_contracts():
+    matrix_doc = (ROOT / "docs" / "release-evidence-matrix.md").read_text(encoding="utf-8")
+
+    for requirement in RELEASE_MATRIX:
+        assert requirement.claim in matrix_doc
+        for scenario in requirement.required_scenarios:
+            assert f"`{scenario}`" in matrix_doc
+        for proof in requirement.required_proof:
+            assert f"`{proof}`" in matrix_doc or proof.replace("_", "-") in matrix_doc
+        for live in requirement.live_required:
+            assert f"`{live}`" in matrix_doc or live == "verified_ws_bundle"
+
+    for layer in HARNESS_LAYER_MATRIX:
+        assert f"| {layer.layer} |" in matrix_doc
+        for proof in layer.required_proof:
+            assert f"`{proof}`" in matrix_doc or proof.replace("_", "-") in matrix_doc

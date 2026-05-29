@@ -112,7 +112,7 @@ The current `1.0.0-lite` line has local product evidence for:
   checks.
 - Secret scanning, build, wheel verification, and default release audit.
 
-The latest verified local count in public docs is `355 local tests`. Re-run
+The latest verified local count in public docs is `356 local tests`. Re-run
 `python -m pytest tests -q` in the project virtual environment before changing
 that number.
 

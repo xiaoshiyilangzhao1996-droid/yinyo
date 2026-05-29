@@ -20,21 +20,25 @@ harness-layer evidence, and the live Feishu records required before full
 
 ## 3+6 Matrix
 
+The three product cores are Less is more, Borrow what works, and DeepSeek adapted.
+The six behavioral traits are Curiosity, Reliability, Fact hygiene,
+Multidisciplinary thinking, Negative capability, and Low ego, high drive.
+
 The authoritative executable mapping lives in `yinyo/release_matrix.py`.
 `python scripts/replay_scenarios.py --matrix` evaluates this table against the
 versioned harness corpus in `corpus/harness/scenarios.v1.json`.
 
-| Claim | Local scenarios | Required proof | Live `1.0.0` evidence |
-|---|---|---|---|
-| Less is more | `text_reply`, `duplicate_text`, `ws_sdk_envelope_normalization` | `gateway_job`, `duplicate_guard`, `ws_sdk_envelope` | `text_message_reply`, `duplicate_callback` |
-| Borrow what works | `memory_supersession`, `memory_durability_policy`, `temporal_state_recovery`, `trace2skill_promotion` | `memory_supersession`, `memory_durability`, `temporal_state_recovery`, `trace2skill_regression` | `memory_supersession`, `trace2skill_promotion` |
-| DeepSeek adapted | `deepseek_usage`, `partial_failure` | `model_usage`, `partial_failure` | `deepseek_usage`, `partial_failure` |
-| Curiosity | `memory_supersession`, `memory_durability_policy`, `temporal_state_recovery` | durable fact filtering, supersession, recovery | `memory_supersession` |
-| Reliability | `text_reply`, `image_understanding`, `ack_boundary`, `ws_sdk_envelope_normalization`, `card_fallback`, `duplicate_text` | gateway, image, ACK, SDK, fallback, duplicate proof | `text_message_reply`, `image_message_reply`, `ws_ack_boundary`, `card_fallback`, `duplicate_callback` |
-| Fact hygiene | `memory_supersession`, `fact_hygiene_policy`, `partial_failure` | source-required answers, redacted partial-failure proof | `memory_supersession`, `partial_failure` |
-| Multidisciplinary thinking | `image_understanding`, `long_conversation`, `trace2skill_promotion` | image, long-context, Trace2Skill regression proof | `image_understanding`, `long_conversation`, `trace2skill_promotion` |
-| Negative capability | `partial_failure` | user-visible partial status and operator evidence | `partial_failure` |
-| Low ego, high drive | `state_handoff`, `release_gate` | replayable handoff and release blocker proof | verified ws bundle |
+| ID | Claim | Local scenarios | Required proof | Live `1.0.0` evidence |
+|---|---|---|---|---|
+| `core.less_is_more` | Feishu-only service boundary | `text_reply`, `duplicate_text`, `ws_sdk_envelope_normalization` | `gateway_job`, `duplicate_guard`, `ws_sdk_envelope` | `text_message_reply`, `duplicate_callback` |
+| `core.borrow_what_works` | Memory/evolution mechanisms improve workflows | `memory_supersession`, `memory_durability_policy`, `temporal_state_recovery`, `trace2skill_promotion` | `memory_supersession`, `memory_durability`, `temporal_state_recovery`, `trace2skill_regression` | `memory_supersession`, `trace2skill_promotion` |
+| `core.deepseek_adapted` | DeepSeek usage and degradation are measured | `deepseek_usage`, `partial_failure` | `model_usage`, `partial_failure` | `deepseek_usage`, `partial_failure` |
+| `trait.curiosity` | Reflection stores durable facts only | `memory_supersession`, `memory_durability_policy`, `temporal_state_recovery` | `memory_supersession`, `memory_durability`, `temporal_state_recovery` | `memory_supersession` |
+| `trait.reliability` | Evidence-backed runtime delivery | `text_reply`, `image_understanding`, `ack_boundary`, `ws_sdk_envelope_normalization`, `card_fallback`, `duplicate_text` | `gateway_job`, `image_understanding`, `ack_boundary`, `ws_sdk_envelope`, `card_fallback`, `duplicate_guard` | `text_message_reply`, `image_message_reply`, `ws_ack_boundary`, `card_fallback`, `duplicate_callback` |
+| `trait.fact_hygiene` | Facts and shared evidence are source-bound and redacted | `memory_supersession`, `fact_hygiene_policy`, `partial_failure` | `memory_supersession`, `source_required`, `partial_failure` | `memory_supersession`, `partial_failure` |
+| `trait.multidisciplinary` | Research mechanisms prove product value | `image_understanding`, `long_conversation`, `trace2skill_promotion` | `image_understanding`, `long_context`, `trace2skill_regression` | `image_understanding`, `long_conversation`, `trace2skill_promotion` |
+| `trait.negative_capability` | Failures are explicit to users and operators | `partial_failure` | `partial_failure` | `partial_failure` |
+| `trait.low_ego_high_drive` | Claims require replayable evidence and transferable state | `state_handoff`, `release_gate` | `state_handoff`, `release_gate` | `verified_ws_bundle` |
 
 ---
 
@@ -43,15 +47,15 @@ versioned harness corpus in `corpus/harness/scenarios.v1.json`.
 YINYO uses ETCLOVG as a coverage checklist for harness engineering, not as a
 marketing label.
 
-| Layer | Required public proof |
+| Layer | Claim | Required public proof |
 |---|---|
-| Execution | ACK boundary, SDK envelope normalization, bounded workers, runtime lock, workspace boundary, resource quotas |
-| Tooling | typed tool wrappers, delegated worker traces, card fallback, partial failure |
-| Context | long-context retention, TemporalTree supersession/recovery, source-required answers |
-| Lifecycle | gateway jobs, Trace2Skill promotion, state handoff, release gate |
-| Observability | runtime/job/smoke JSONL, model usage, diagnostics, failure diagnosis, handoff records |
-| Verification | scenario replay, proof envelopes, bundle verifier, release gate, proof ablation |
-| Governance | secret scan, confirmation metadata, redacted bundles, unsupported release blockers |
+| Execution | Feishu events execute through ACK, SDK envelope normalization, bounded workers, durable jobs, quotas, and delivery. | `gateway_job`, `ack_boundary`, `ws_sdk_envelope`, `worker_saturation`, `workspace_boundary`, `resource_quota`, `duplicate_guard`, `card_fallback`, `partial_failure` |
+| Tooling | Tool use is governed by confirmation, delegated workers, and failure boundaries. | `card_fallback`, `delegated_worker_trace`, `partial_failure`, `state_handoff` |
+| Context | Long context and memory are retained, masked, superseded, recovered, and source-bound. | `long_context`, `memory_supersession`, `memory_durability`, `temporal_state_recovery`, `source_required` |
+| Lifecycle | Failures become replay-validated skills, delegated work traces, and release state transfers. | `trace2skill_regression`, `delegated_worker_trace`, `state_handoff`, `release_gate` |
+| Observability | Runtime, model, failure, pressure, and handoff claims carry operator evidence. | `gateway_job`, `model_usage`, `worker_saturation`, `trace_failure_diagnosis`, `partial_failure`, `state_handoff` |
+| Verification | Local harness claims are matrixed, envelope-backed, release-gated, SDK-envelope guarded, and ablation-guarded. | `release_gate`, `trace2skill_regression`, `trace_failure_diagnosis`, `ws_sdk_envelope`, `model_usage`, `adaptive_simplification` |
+| Governance | Evidence, facts, secrets, runtime stores, workspaces, confirmations, and resource use remain bounded. | `source_required`, `memory_durability`, `temporal_state_recovery`, `runtime_lock`, `workspace_boundary`, `resource_quota`, `partial_failure`, `state_handoff` |
 
 ---
 
@@ -77,7 +81,7 @@ updated together.
 ## Release Use
 
 `v1.0.0-lite` can ship with local matrix proof plus a clear live-evidence
-boundary. Full `1.0.0` additionally requires:
+boundary. Full `1.0.0` additionally requires a verified ws bundle:
 
 - verified `transport=ws` redacted smoke bundle;
 - live basic records for text, image, card fallback, duplicate callback, and
@@ -87,4 +91,3 @@ boundary. Full `1.0.0` additionally requires:
 - at least one replayable run-level `handoff.json`;
 - `yinyo.live_provenance.v1` with non-placeholder attestation, Feishu app hash,
   tenant hash, and ws SDK session id.
-

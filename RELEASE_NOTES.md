@@ -83,7 +83,7 @@ python scripts/prepare_github_release.py --version v1.0.0-lite
 
 Expected local results:
 
-- `355 passed`
+- `356 passed`
 - public tree verification passes
 - secret scan passes
 - wheel verification passes for `yinyo_agent-1.0.0rc1-py3-none-any.whl`

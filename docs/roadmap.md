@@ -8,7 +8,7 @@ This document tracks the gap between the current `1.0.0-lite` public line and a 
 
 | Area | Status |
 |---|---|
-| Validation | 355 local tests |
+| Validation | 356 local tests |
 | Release gate | `1.0.0-lite` gate passes locally; strict full `1.0.0` gate blocks on live Feishu evidence. |
 | Canonical root | Stable standalone repository checkout, not a dated session directory. |
 
