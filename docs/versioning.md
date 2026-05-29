@@ -76,10 +76,11 @@ must not be used as package versions, README release versions, or public tags.
   only the `1.0.0rc1` wheel and sdist from `dist/`.
 - GitHub source releases should contain only the product-facing tree:
   README, license/security/contribution docs, package source, tests, scripts,
-  docs, examples, corpus, and CI. Generated runtime data, local workspaces,
-  build outputs, virtual environments, caches, and raw env files must stay out
-  of git and package artifacts; `python scripts/verify_public_tree.py` enforces
-  this boundary.
+  public docs, examples, corpus, and CI. Public docs include the release
+  evidence matrix and benchmark methodology. Generated runtime data, local
+  workspaces, build outputs, virtual environments, caches, package-internal
+  collaboration docs, and raw env files must stay out of git and package
+  artifacts; `python scripts/verify_public_tree.py` enforces this boundary.
 - External testers may run and report the lite or release-candidate line before
   `1.0.0`, but release notes and README status must keep that line clearly
   labeled as non-stable until the candidate guard passes.

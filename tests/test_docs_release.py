@@ -79,15 +79,15 @@ def test_maintenance_release_gate_uses_real_wait_timeout():
 
 
 def test_readme_test_badges_match_current_local_count():
-    expected = "tests-353%20local"
+    expected = "tests-355%20local"
     for readme in ("README.md", "README.zh-CN.md"):
         text = (ROOT / readme).read_text(encoding="utf-8")
         assert expected in text
 
     for doc in ("CHANGELOG.md", "docs/roadmap.md"):
         text = (ROOT / doc).read_text(encoding="utf-8")
-        assert "353" in text
-        for stale in ("352", "350", "347", "330", "302", "293", "292", "291", "283", "282", "280", "278", "276", "274", "263", "262", "261", "260", "258", "256 tests", "256 local tests", "253", "252", "251", "249", "248", "247", "215", "221", "222", "223", "224", "225"):
+        assert "355" in text
+        for stale in ("354", "353", "352", "350", "347", "330", "302", "293", "292", "291", "283", "282", "280", "278", "276", "274", "263", "262", "261", "260", "258", "256 tests", "256 local tests", "253", "252", "251", "249", "248", "247", "215", "221", "222", "223", "224", "225"):
             assert stale not in text
 
 
@@ -126,7 +126,9 @@ def test_public_docs_do_not_contain_common_mojibake():
         "CHANGELOG.md",
         "docs/architecture.md",
         "docs/deployment.md",
+        "docs/benchmarking.md",
         "docs/external-testing.md",
+        "docs/release-evidence-matrix.md",
         "docs/production-checklist.md",
         "docs/roadmap.md",
         "docs/spec.md",
@@ -182,8 +184,12 @@ def test_public_docs_preserve_harness_positioning_and_frontier_boundaries():
 
     assert "harness Agent" in readme
     assert "Hermes and OpenClaw" in readme
+    assert "docs/benchmarking.md" in readme
+    assert "docs/release-evidence-matrix.md" in readme
     assert "harness Agent" in zh_readme
-    assert "Hermes 和 OpenClaw" in zh_readme
+    assert "Hermes" in zh_readme and "OpenClaw" in zh_readme
+    assert "docs/benchmarking.md" in zh_readme
+    assert "docs/release-evidence-matrix.md" in zh_readme
     assert "## Product Constitution" in readme
     assert "## 产品宪法" in zh_readme
     assert "## Frontier Mechanism Map" in spec
@@ -196,6 +202,7 @@ def test_spec_tracks_agent_harness_engineering_survey_alignment():
     spec = (ROOT / "docs" / "spec.md").read_text(encoding="utf-8")
     roadmap = (ROOT / "docs" / "roadmap.md").read_text(encoding="utf-8")
     handoff = (ROOT / "docs" / "handoff.md").read_text(encoding="utf-8")
+    evidence_matrix = (ROOT / "docs" / "release-evidence-matrix.md").read_text(encoding="utf-8")
 
     assert "## Harness Engineering Alignment" in spec
     assert "https://picrew.github.io/LLM-Harness/" in spec
@@ -205,6 +212,9 @@ def test_spec_tracks_agent_harness_engineering_survey_alignment():
     assert "ETCLOVG layer coverage table" in spec
     assert "handoff packets" in roadmap
     assert "handoff.json" in handoff
+    assert "read as of 2026-05-29" in evidence_matrix
+    for layer in ("Execution", "Tooling", "Context", "Lifecycle", "Observability", "Verification", "Governance"):
+        assert layer in evidence_matrix
 
 
 def test_readmes_have_equivalent_1_0_evidence_chain_boundaries():
@@ -244,11 +254,14 @@ def test_public_tree_verifier_is_documented_and_in_ci():
     ci = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
     release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    verifier = (ROOT / "scripts" / "verify_public_tree.py").read_text(encoding="utf-8")
 
     for text in (readme, zh_readme, maintenance, versioning, ci, release):
         assert "python scripts/verify_public_tree.py" in text
     for token in ("prune workspace", "prune dist", "global-exclude *.env", "global-exclude *.runtime.jsonl"):
         assert token in manifest
+    for token in ("yinyo/SOUL.md", "yinyo/AGENTS.md", "SOUL.md"):
+        assert token in verifier
 
 
 def test_external_testing_guide_is_linked_and_keeps_lite_boundary():
@@ -260,6 +273,8 @@ def test_external_testing_guide_is_linked_and_keeps_lite_boundary():
 
     assert "docs/external-testing.md" in readme
     assert "docs/external-testing.md" in zh_readme
+    assert "docs/release-evidence-matrix.md" in readme
+    assert "docs/benchmarking.md" in readme
     assert "1.0.0-lite" in guide
     assert "1.0.0rc1" in guide
     assert "not the full" in guide and "stable `1.0.0` release" in guide
@@ -267,7 +282,7 @@ def test_external_testing_guide_is_linked_and_keeps_lite_boundary():
     assert "smoke-bundle" in guide
     assert "Do Not Share" in guide
     assert "External testers may run and report" in versioning
-    assert "353 local tests" in handoff
+    assert "355 local tests" in handoff
 
 
 def test_lite_release_notes_are_publishable_and_preserve_1_0_boundary():
@@ -292,6 +307,8 @@ def test_lite_release_notes_are_publishable_and_preserve_1_0_boundary():
     assert "Do not attach stale alpha artifacts" in maintenance
     assert "python scripts/prepare_github_release.py --version v1.0.0-lite" in maintenance
     assert "python scripts/prepare_github_release.py --version v1.0.0-lite" in notes
+    assert "docs/release-evidence-matrix.md" in notes
+    assert "docs/benchmarking.md" in notes
 
 
 def test_wheel_build_is_not_shadowed_by_local_build_directory_and_excludes_internal_package_docs():
@@ -319,3 +336,29 @@ def test_github_release_preparation_script_is_documented_and_checksummed():
     assert "tag v1.0.0-lite does not point at HEAD" in script or "does not point at HEAD" in script
     assert "unexpected release assets in dist" in script
     assert "scripts/prepare_github_release.py" in verifier
+
+
+def test_public_evidence_matrix_and_benchmarking_are_publishable():
+    matrix = (ROOT / "docs" / "release-evidence-matrix.md").read_text(encoding="utf-8")
+    benchmarking = (ROOT / "docs" / "benchmarking.md").read_text(encoding="utf-8")
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    maintenance = (ROOT / "MAINTENANCE.md").read_text(encoding="utf-8")
+    deployment = (ROOT / "docs" / "deployment.md").read_text(encoding="utf-8")
+    verifier = (ROOT / "scripts" / "verify_wheel.py").read_text(encoding="utf-8")
+
+    for token in ("Less is more", "Borrow what works", "DeepSeek adapted", "Low ego, high drive", "verified ws bundle"):
+        assert token in matrix
+    for token in ("Execution", "Tooling", "Context", "Lifecycle", "Observability", "Verification", "Governance"):
+        assert token in matrix
+    assert "read as of 2026-05-29" in matrix
+    assert "Hermes" in benchmarking and "OpenClaw" in benchmarking
+    assert "does not claim to be more mature or more stable" in benchmarking
+    assert "`1.0.0-lite` / `1.0.0rc1`" in security
+    assert "`0.1.x-alpha` | Active alpha" not in security
+    assert "diagnose --config ./yinyo.env" in maintenance
+    assert "diagnose --workspace ./workspace" not in maintenance
+    assert "advanced `<ref>` that looks like a local path must exist" in maintenance
+    assert "durable operator attestation id" in maintenance
+    assert "placeholders are rejected" in deployment
+    assert "docs/release-evidence-matrix.md" in verifier
+    assert "docs/benchmarking.md" in verifier

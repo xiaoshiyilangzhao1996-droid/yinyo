@@ -55,9 +55,10 @@ documented as one.
 
 | Version | Supported |
 |---|---|
-| `0.1.x-alpha` | Active alpha |
-| Internal `vX.Y` prototypes | Not public release lines |
-| `< 0.1.0` | End of life |
+| `1.0.0-lite` / `1.0.0rc1` | Active public lite line |
+| Future `1.0.x` | Supported only after verified live Feishu bundle promotion |
+| Internal prototype labels | Not public release lines |
+| `< 1.0.0-lite` | End of life |
 
 ---
 

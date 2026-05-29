@@ -266,6 +266,9 @@ Path-like advanced refs are also resolved locally when possible. A
 `failure_ref`, or `run_id` that looks like a local file must exist and match the
 expected schema; unresolved refs surface as `advanced_ref_unresolved`. Plain
 redacted external tokens remain valid external references.
+Use a non-path redacted token only when the source artifact lives in an external
+system. If a ref looks like a local path, the file must exist before
+`record-advanced` writes the evidence.
 
 ```bash
 yinyo smoke record-advanced --config ./yinyo.env --scenario image_understanding --image-ref <redacted-image-ref>
@@ -337,6 +340,9 @@ must also contain at least one replayable run-level `handoff.json`, a redacted
 basic smoke scenario with `ack_latency_ms`, `ack_deadline_ms`, and
 `ack_within_deadline=true`. The ws bundle does not
 require an HTTP `url_verification` smoke record.
+The attestation id should be a redacted, durable operator record such as a
+release checklist id, test-run ticket, or meeting-note id that the release owner
+can look up later; placeholders are rejected.
 
 After the bundle gate is otherwise green, run `python
 scripts/prepare_release_metadata.py --version 1.0.0 --verified-bundle

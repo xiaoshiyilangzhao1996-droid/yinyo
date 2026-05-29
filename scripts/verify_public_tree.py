@@ -57,10 +57,16 @@ FORBIDDEN_SUFFIXES = {
 FORBIDDEN_NAMES = {
     ".env",
     "yinyo.env",
+    "SOUL.md",
     "runtime.jsonl",
     "runtime_jobs.jsonl",
     "gateway_events.jsonl",
     "smoke_evidence.jsonl",
+}
+
+FORBIDDEN_EXACT_PATHS = {
+    "yinyo/AGENTS.md",
+    "yinyo/SOUL.md",
 }
 
 
@@ -79,6 +85,8 @@ def main() -> int:
             blockers.append(f"forbidden generated path: {rel}")
         if path.name in FORBIDDEN_NAMES:
             blockers.append(f"forbidden secret/runtime file: {rel}")
+        if path.as_posix() in FORBIDDEN_EXACT_PATHS:
+            blockers.append(f"forbidden internal package doc: {rel}")
         if path.suffix in FORBIDDEN_SUFFIXES:
             blockers.append(f"forbidden generated suffix: {rel}")
         if path.name.endswith((".runtime.jsonl", ".runtime_jobs.jsonl", ".gateway_events.jsonl", ".smoke_evidence.jsonl")):

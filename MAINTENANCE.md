@@ -74,7 +74,7 @@ python scripts/verify_release.py --target 1.0.0 --bundle ./workspace/smoke-bundl
 python scripts/replay_scenarios.py
 python scripts/replay_scenarios.py --matrix
 python -m pytest tests -q
-python -m yinyo.cli diagnose --workspace ./workspace
+python -m yinyo.cli diagnose --config ./yinyo.env
 python -m build
 python scripts/verify_wheel.py --skip-build
 python scripts/prepare_github_release.py --version v1.0.0-lite
@@ -126,7 +126,11 @@ redacted required fields, so copied or edited advanced records fail with
 Path-like advanced references are resolved locally when possible and reported
 through `yinyo.advanced_ref_resolution.v1`; unresolved local paths or invalid
 Trace2Skill validation files show up as `advanced_ref_unresolved`. Plain
-redacted external tokens are still accepted as external references.
+redacted external tokens are still accepted as external references. Any
+advanced `<ref>` that looks like a local path must exist and satisfy the
+scenario-specific schema checks before `record-advanced` writes the evidence.
+Use a non-path redacted token such as `ticket-123-redacted` only when the source
+artifact lives outside the release workspace.
 `yinyo smoke status` is the read-only triage view for an incomplete run; it
 breaks missing evidence down by basic and advanced scenario layer and prints
 operator next actions.
@@ -141,6 +145,9 @@ review artifact. The `1.0.0` ws release path requires `yinyo smoke bundle
 run-level `handoff.json` packets and operator live provenance travel with
 runtime evidence. The command inherits `ws_sdk_session_id` from `yinyo.env`
 and computes `feishu_app_id_hash` as `sha256(app_id)` from the same config.
+Use a durable operator attestation id that can be looked up by the release
+owner, such as a redacted test-run ticket, signed checklist id, or meeting-note
+record id. Do not use placeholders like `todo`, `test`, or raw human names.
 `--ws-sdk-session-id` and `--feishu-app-id-hash` are optional and must match
 `ws_sdk_session_id` and `sha256(app_id)` if provided. At least one handoff must
 replay through `replay_handoff()` so the manifest reports

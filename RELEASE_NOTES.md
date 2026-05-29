@@ -62,6 +62,8 @@ python -m pip install -e ".[dev]"
 - Smoke, diagnostics, redaction, bundle, public-tree, secret, wheel, and release
   verification commands.
 - GitHub tester guide: `docs/external-testing.md`.
+- Public evidence matrix: `docs/release-evidence-matrix.md`.
+- Benchmark method and limits: `docs/benchmarking.md`.
 
 ---
 
@@ -81,7 +83,7 @@ python scripts/prepare_github_release.py --version v1.0.0-lite
 
 Expected local results:
 
-- `353 passed`
+- `355 passed`
 - public tree verification passes
 - secret scan passes
 - wheel verification passes for `yinyo_agent-1.0.0rc1-py3-none-any.whl`

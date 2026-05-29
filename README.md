@@ -7,12 +7,12 @@
 ![Status](https://img.shields.io/badge/status-lite-2ea043)
 ![Version](https://img.shields.io/badge/version-1.0.0--lite-2ea043)
 ![Scope](https://img.shields.io/badge/scope-harness--agent-blue)
-![Tests](https://img.shields.io/badge/tests-353%20local-2ea043)
+![Tests](https://img.shields.io/badge/tests-355%20local-2ea043)
 ![Release](https://img.shields.io/badge/1.0-blocked%20by%20live%20smoke-d73a49)
 
 </div>
 
-YINYO is a focused harness Agent product benchmarked against Hermes and OpenClaw. It uses Feishu and DeepSeek as the first product surface, then combines a runtime gateway, DeepSeek-first model gateway, TemporalTree memory, Trace2Skill evolution, evidence records, and release gates into one deployable product line.
+YINYO is a focused harness Agent product benchmarked against Hermes and OpenClaw design expectations. It uses Feishu and DeepSeek as the first product surface, then combines a runtime gateway, DeepSeek-first model gateway, TemporalTree memory, Trace2Skill evolution, evidence records, and release gates into one deployable product line. See [docs/benchmarking.md](docs/benchmarking.md) for the comparison method and limits.
 
 [Quick Start](#quick-start) · [External Testing](#external-testing) · [Product Constitution](#product-constitution) · [What It Does](#what-it-does) · [Runtime](#runtime) · [Release Status](#release-status) · [Boundaries](#boundaries) · [Validation](#validation)
 
@@ -62,7 +62,7 @@ YINYO keeps three product cores:
 | Borrow what works | Research-inspired memory, context, and evolution mechanisms must produce testable behavior. |
 | DeepSeek adapted | Large context, low-cost calls, tool calling, retry/fallback, and usage telemetry are first-class design assumptions. |
 
-It also keeps six behavioral traits: curiosity, reliability, fact hygiene, multidisciplinary thinking, negative capability, and low ego with high drive. The release matrix maps every core and trait to executable local evidence, then `1.0.0` requires live Feishu evidence for the same product claims.
+It also keeps six behavioral traits: curiosity, reliability, fact hygiene, multidisciplinary thinking, negative capability, and low ego with high drive. The release matrix maps every core and trait to executable local evidence, then `1.0.0` requires live Feishu evidence for the same product claims. The public matrix is indexed in [docs/release-evidence-matrix.md](docs/release-evidence-matrix.md).
 
 ---
 
@@ -182,6 +182,8 @@ For the live `card_fallback` smoke scenario, temporarily set `smoke_mode=true` i
 | Document | Purpose |
 |---|---|
 | [docs/external-testing.md](docs/external-testing.md) | GitHub tester guide for real Feishu validation and redacted bundle sharing. |
+| [docs/release-evidence-matrix.md](docs/release-evidence-matrix.md) | Public 3+6 and ETCLOVG evidence index. |
+| [docs/benchmarking.md](docs/benchmarking.md) | Hermes/OpenClaw comparison method and limits. |
 | [docs/spec.md](docs/spec.md) | Product spec and acceptance gates. |
 | [docs/handoff.md](docs/handoff.md) | Cross-session product context and current evidence boundary. |
 | [docs/roadmap.md](docs/roadmap.md) | Gap from alpha to `1.0.0`. |

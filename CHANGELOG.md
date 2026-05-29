@@ -12,10 +12,10 @@ All notable changes to YINYO are documented here.
   live evidence.
 - Documented the product/package version mapping: tag `v1.0.0-lite`, product
   version `1.0.0-lite`, Python package version `1.0.0rc1`.
+- Local validation: 355 tests passing.
 
 ## 0.1.0-alpha.1
 
-- Local validation: 353 tests passing.
 - Added release matrix, 15-case versioned harness corpus, smoke evidence gates, wheel verification, and 1.0 candidate guard.
 - Added workspace-boundary corpus proof for read, search, write, and run-workdir containment.
 - Added TemporalTree state recovery proof with provenance, stale-state, audit-trail, and disk-reload checks.

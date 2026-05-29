@@ -25,6 +25,8 @@ SDIST_REQUIRED_FILES = [
     ".github/workflows/release.yml",
     "docs/spec.md",
     "docs/deployment.md",
+    "docs/release-evidence-matrix.md",
+    "docs/benchmarking.md",
     "corpus/harness/scenarios.v1.json",
     "examples/feishu_scenarios.json",
     "scripts/verify_release.py",
