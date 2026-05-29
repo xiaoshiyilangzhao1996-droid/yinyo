@@ -36,7 +36,9 @@ yinyo serve --workspace ./workspace --dry-run
 
 ## 外部测试
 
-GitHub 用户可以用 `v1.0.0-lite` 连接真实飞书应用测试。[docs/external-testing.md](docs/external-testing.md) 从 clone 或安装开始，说明如何配置飞书自建应用、启动长连接服务、收集脱敏 smoke evidence，并在不泄露密钥的前提下共享 `smoke-bundle`。
+GitHub 用户可以用 `v1.0.0-lite` 连接真实飞书应用测试。真实用户请先看 [docs/feishu-user-acceptance.zh-CN.md](docs/feishu-user-acceptance.zh-CN.md)，它只关注飞书里的功能体验和产品可用性，不要求测试者运行发布验证命令。
+
+维护者可以继续按 [docs/external-testing.md](docs/external-testing.md) 从 clone 或安装开始，配置飞书自建应用、启动长连接服务、收集脱敏 smoke evidence，并在不泄露密钥的前提下共享 `smoke-bundle`。
 
 外部 live 报告可以进入 `1.0.0` 评审，但只有严格候选门禁带 verified ws bundle 通过后，才能发布 `v1.0.0`：
 

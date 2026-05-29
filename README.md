@@ -36,10 +36,16 @@ yinyo serve --workspace ./workspace --dry-run
 
 ## External Testing
 
-GitHub users can test `v1.0.0-lite` against a real Feishu app. Follow
-[docs/external-testing.md](docs/external-testing.md) to clone or install YINYO,
-configure a self-built Feishu app, run the long-connection service, collect
-redacted smoke evidence, and share a `smoke-bundle` without secrets.
+GitHub users can test `v1.0.0-lite` against a real Feishu app. Use
+[docs/feishu-user-acceptance.zh-CN.md](docs/feishu-user-acceptance.zh-CN.md)
+for product-level Feishu user acceptance testing. It focuses on whether YINYO
+is useful in real Feishu workflows and does not ask testers to run release
+verification commands.
+
+Maintainers can follow [docs/external-testing.md](docs/external-testing.md) to
+clone or install YINYO, configure a self-built Feishu app, run the
+long-connection service, collect redacted smoke evidence, and share a
+`smoke-bundle` without secrets.
 Use [RELEASE_NOTES.md](RELEASE_NOTES.md) as the GitHub Release body and asset
 checklist for `v1.0.0-lite`.
 
