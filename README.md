@@ -44,7 +44,17 @@ YINYO puts a verifiable, memory-backed, self-improving Agent into Feishu workflo
 
 ## Overview
 
-YINYO is a Feishu-first harness Agent product benchmarked against Hermes and OpenClaw design expectations. It is not a generic chatbot wrapper and not a broad multi-platform gateway. It uses Feishu as the first user surface and DeepSeek as the first model assumption, then combines runtime orchestration, memory evolution, Trace2Skill, observability, and release gates into one deployable product line.
+YINYO is a lightweight harness Agent shaped around Feishu and DeepSeek. It benchmarks against Hermes and OpenClaw, but does not try to connect every platform at once. It makes one real office surface work first: Feishu reaches the user, DeepSeek handles reasoning and generation, and YINYO organizes memory, tools, evidence, and self-improvement into a runnable product.
+
+YINYO is guided by three product cores:
+
+| Product core | Meaning |
+|---|---|
+| **Less is more** | Keep the Feishu + DeepSeek path narrow, stable, and understandable; fewer surfaces, fewer concepts, less operational burden. |
+| **Borrow what works** | Learn from Hermes, OpenClaw, and HarnessAgent research, but keep only mechanisms that become product behavior and testable evidence. |
+| **DeepSeek adapted** | Optimize around DeepSeek context, cost, retries, fallback, usage telemetry, and Chinese office workflows instead of treating the model as a generic black box. |
+
+YINYO is also constrained by six behavioral traits: curiosity, reliability, fact hygiene, multidisciplinary thinking, negative capability, and low ego with high drive. It should ask when context is missing, execute steadily, separate facts from guesses, solve problems across product and engineering layers, tolerate uncertainty when evidence is incomplete, and turn repeated failures into reusable capability.
 
 It is built for:
 
@@ -59,12 +69,12 @@ It is built for:
 
 | Feature | Description |
 |---|---|
-| **Feishu-native surface** | Long-connection `ws` transport, text/image handling, replies, card fallback, and duplicate-event protection. |
-| **DeepSeek-first path** | DeepSeek defaults with timeout, retry, fallback, usage telemetry, and cost estimates. |
-| **Durable memory** | TemporalTree facts evolve through supersession instead of stale-note accumulation. |
-| **Self-improvement** | Trace2Skill extracts repeated failures into skills and promotes them only after replay evidence. |
-| **Evidence-backed runtime** | Runtime logs, jobs, event store, smoke evidence, diagnostics, and release gates are first-class. |
-| **Tight scope** | Feishu + DeepSeek first; no platform sprawl into WeChat, QQ, DingTalk, desktop pets, or generic UI shells. |
+| **Narrow and reliable surface** | Maps to Less is more: Feishu long-connection `ws`, text/image handling, replies, card fallback, and duplicate-event protection. |
+| **Borrowed, then productized** | Maps to Borrow what works: memory evolution, Trace2Skill, and release gates become runnable code and replayable evidence. |
+| **DeepSeek-first execution** | Maps to DeepSeek adapted: timeout, retry, fallback, usage telemetry, and cost estimates are built into the model path. |
+| **Reliable execution** | Runtime logs, jobs, event store, outbox, and single-writer runtime lock make delivery observable instead of implied. |
+| **Fact hygiene** | TemporalTree facts evolve through supersession, and the Agent asks for missing context instead of inventing it. |
+| **Low ego, high drive** | Trace2Skill extracts repeated failures into skills and promotes them only after replay evidence. |
 
 ---
 

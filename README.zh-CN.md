@@ -44,7 +44,17 @@ YINYO 把一个可验证、可记忆、可进化的 Agent 放进飞书工作流�
 
 ## 项目简介
 
-YINYO 是一个按 Hermes and OpenClaw 这类 harness Agent 设计预期对标的飞书优先产品。它不像通用聊天机器人那样只负责生成回复，也不像多平台网关那样先铺很大的集成面；它选择飞书作为第一用户入口，DeepSeek 作为第一模型假设，把 runtime、memory、evolution、observability 和 release gate 放在同一条产品线上。
+YINYO 是一个围绕飞书与 DeepSeek 打磨的轻量 Harness Agent。它的出发点不是“什么平台都接一点”，而是先把一个真实办公入口做深：飞书负责触达用户，DeepSeek 负责推理生成，YINYO 负责把记忆、工具、证据和自进化组织成可运行、可验证、可交付的 Agent。
+
+YINYO 的产品判断由三个核心驱动：
+
+| 产品核心 | 含义 |
+|---|---|
+| **Less is more** | 先把飞书 + DeepSeek 这条主路径做窄、做稳、做清楚；少接入口，少堆概念，减少用户和 Agent 的操作负担。 |
+| **Borrow what works** | 借鉴 Hermes、OpenClaw、HarnessAgent 研究和工程实践中有效的部分，但只留下能变成产品行为和测试证据的机制。 |
+| **DeepSeek adapted** | 默认围绕 DeepSeek 的上下文、成本、重试、fallback、usage telemetry 和中文办公场景优化，而不是把模型当成可随意替换的黑盒。 |
+
+YINYO 的行为风格由六个特质约束：好奇心、靠谱、事实洁癖、多元化思维、能忍受不确定性、低 ego 高自驱。它应该主动追问缺口，稳定执行任务，区分事实和猜测，从工具、记忆、产品、工程多个角度解决问题，在证据不足时承认不确定，并持续把失败沉淀成下一次可复用的能力。
 
 YINYO 适合这些人：
 
@@ -59,12 +69,12 @@ YINYO 适合这些人：
 
 | 特性 | 说明 |
 |---|---|
-| **飞书原生入口** | 默认使用飞书长连接 `ws`，支持文本、图片、回复、卡片降级和重复事件保护。 |
-| **DeepSeek-first** | 默认 DeepSeek API，内置超时、重试、fallback、usage telemetry 和成本估算。 |
-| **可记忆** | TemporalTree 记忆通过 supersession 演化，旧事实不会无限堆积。 |
-| **可进化** | Trace2Skill 把重复失败提炼成技能，并通过回放证据再 promotion。 |
-| **可验证** | 每次运行都有 runtime log、job、event store、evidence 和 release gate。 |
-| **克制边界** | 当前只聚焦飞书 + DeepSeek，不把精力分散到微信、QQ、钉钉、桌面端等多入口。 |
+| **少而稳的入口** | 对应 Less is more：默认飞书长连接 `ws`，支持文本、图片、回复、卡片降级和重复事件保护。 |
+| **能借鉴但不照搬** | 对应 Borrow what works：把记忆演化、Trace2Skill、release gate 等 harness 思路落到可运行代码和可回放证据。 |
+| **DeepSeek 优先适配** | 对应 DeepSeek adapted：内置超时、重试、fallback、usage telemetry 和成本估算，面向中文办公对话优化。 |
+| **靠谱执行** | 通过 runtime log、job、event store、outbox 和 single-writer runtime lock 记录每一步，减少“看起来回复了但实际没交付”。 |
+| **事实洁癖** | TemporalTree 记忆通过 supersession 演化，区分新旧事实；证据不足时要求澄清，而不是编造上下文。 |
+| **低 ego 高自驱** | Trace2Skill 会把重复失败提炼成技能，只有通过回放验证后才 promotion，让系统从失败中变得更可靠。 |
 
 ---
 
