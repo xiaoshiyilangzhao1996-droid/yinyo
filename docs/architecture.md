@@ -1,170 +1,142 @@
 # YINYO Architecture
 
-## Overview
+YINYO is a single-package Python runtime for a Feishu-focused agent. This
+document describes the current implementation shape. Capability claims are
+governed by [spec.md](spec.md); when this document and the acceptance spec
+disagree, the acceptance spec wins.
 
-YINYO is a **single-package Python library** implementing an autonomous agent for Feishu. The architecture follows a layered design:
+---
 
+## Runtime Path
+
+```mermaid
+flowchart TD
+  A["Feishu event"] --> B["Long connection or HTTP fallback"]
+  B --> C["Runtime gateway"]
+  C --> D["Durable idempotency"]
+  C --> E["Runtime job queue"]
+  E --> F["YinyoAgent"]
+  F --> G["Model gateway"]
+  F --> H["Tools and evidence"]
+  F --> I["TemporalTree memory"]
+  F --> J["Trace2Skill"]
+  E --> K["Outbox reply"]
+  K --> L["Smoke evidence"]
+  C --> M["Runtime logs"]
 ```
-┌──────────────────────────────────────────┐
-│              Entry Points                │
-│  handle_message()    /    run()          │
-└────────────────┬─────────────────────────┘
-                 │
-┌────────────────▼─────────────────────────┐
-│           Session Manager               │
-│  Dedup, command routing, history         │
-└────────────────┬─────────────────────────┘
-                 │
-┌────────────────▼─────────────────────────┐
-│              Agent Loop                  │
-│  ┌──────────────────────────────────┐    │
-│  │  Plan Phase (optional)           │    │
-│  │  - Generate step-by-step plan    │    │
-│  │  - THINK_HIGH mode              │    │
-│  └──────────────┬───────────────────┘    │
-│                 ▼                        │
-│  ┌──────────────────────────────────┐    │
-│  │  ReAct Loop (max 50 steps)       │    │
-│  │  ┌────────┐     ┌────────────┐   │    │
-│  │  │ Model  │────▶│ Tool Calls │   │    │
-│  │  │Gateway │◀────│ (parallel) │   │    │
-│  │  └────────┘     └─────┬──────┘   │    │
-│  │                       │          │    │
-│  │  ┌────────────────────▼───────┐  │    │
-│  │  │  Evidence + Verification   │  │    │
-│  │  │  - Hash tool results       │  │    │
-│  │  │  - Verify integrity        │  │    │
-│  │  │  - Governance check        │  │    │
-│  │  └────────────────────────────┘  │    │
-│  └──────────────────────────────────┘    │
-└────────────────┬─────────────────────────┘
-                 │
-┌────────────────▼─────────────────────────┐
-│           Reflection Layer               │
-│  ┌──────────────────────────────────┐    │
-│  │  Auto-Reflect (every run)        │    │
-│  │  - Review task + result          │    │
-│  │  - Auto-update MEMORY.md         │    │
-│  │  - Write reflection.md           │    │
-│  └──────────────────────────────────┘    │
-│  ┌──────────────────────────────────┐    │
-│  │  Deep-Reflect (every 10 runs)    │    │
-│  │  - Scan recent reflections       │    │
-│  │  - Detect patterns/anti-patterns │    │
-│  │  - Update MEMORY.md trends       │    │
-│  └──────────────────────────────────┘    │
-└──────────────────────────────────────────┘
-```
+
+The product path is Feishu-only. Long connection is the primary release proof
+path; HTTP webhook support remains a tested fallback and local diagnostic path.
 
 ---
 
 ## Core Components
 
-### 1. Agent Loop (`agent.py`)
+### Agent Loop
 
-The central orchestrator. Implements:
-- **Plan phase**: Before execution, generates a step-by-step plan using THINK_HIGH mode.
-- **ReAct loop**: Iterates between model reasoning and tool execution. Supports parallel tool calls.
-- **Auto-reflect**: After each run, LLM reviews and decides what to remember.
-- **Deep-reflect**: Every 10 runs, cross-run pattern analysis.
+`yinyo/agent.py` orchestrates plan, model, tool, evidence, context, memory, and
+reflection behavior.
 
-### 2. Context Manager (`context.py`)
+- Plan phase can produce a step-by-step execution plan.
+- The ReAct loop alternates between model output and tool execution.
+- Tool results are recorded in evidence before they become claims.
+- Reflection can update memory only through validated memory operations.
 
-Three-layer context management:
-1. **Observation Masking** (token > 80%): Hide older tool outputs.
-2. **LLM DAG Compression** (token > 90%): LLM generates structured summaries (ACON-inspired).
-3. **Memory Retrieval**: Semantic search via VectorCache (TF-IDF).
+### Model Gateway
 
-### 3. Memory System
+`yinyo/model.py` provides the model-provider boundary.
 
-Two-tier architecture:
+- DeepSeek is the default product assumption.
+- Retry and fallback attempts are observable.
+- Run metadata captures provider attempts and usage/cost evidence when
+  available.
 
-| Tier | Storage | Purpose |
-|------|---------|---------|
-| **Inject** | USER.md + MEMORY.md | Injected into system prompt every run |
-| **Retrieve** | VectorCache (TF-IDF) | Semantic search for relevant past memories |
+### Context And Memory
 
-**Memory Tool** (`memory_tool.py`): CRUD operations with:
-- § delimiter format (Hermes-compatible)
-- Dedup via first-80-char similarity
-- Auto-merge on overflow
-- Substring matching for replace/remove
+`yinyo/context.py`, `yinyo/memory.py`, and `yinyo/memory_tool.py` implement the
+long-context and memory surfaces.
 
-### 4. Model Gateway (`model.py`)
+- Recent protected messages stay available during context management.
+- Older observations can be masked or summarized.
+- Contradictory memory facts supersede earlier facts instead of silently
+  coexisting.
+- Search excludes superseded facts while audit trails retain them.
 
-DeepSeek API wrapper with:
-- Three thinking modes: NON_THINK, THINK_HIGH, THINK_MAX
-- Auto-fallback to deepseek-v4-pro on errors
-- Parallel tool call support (`parallel_tool_calls=True`)
+### Tools
 
-### 5. Tools (`tools.py`)
+Built-in tools are registered in `yinyo/tools.py`.
 
-8 atomic tools registered via decorator:
+| Tool | Permission | Role |
+|---|---|---|
+| `do_read` | `ALLOW` | Read workspace files with pagination. |
+| `do_write` | `CONFIRM` | Write or overwrite files. |
+| `do_search` | `ALLOW` | Search files or file contents. |
+| `do_run` | `CONFIRM` | Execute shell commands. |
+| `do_ask` | `ALLOW` | Ask a model sub-question. |
+| `do_edit` | `CONFIRM` | Apply targeted text edits. |
+| `do_patch` | `CONFIRM` | Apply patch-style edits. |
+| `do_memory` | `ALLOW` | Manage user/project memory. |
+| `do_vision` | `ALLOW` | Analyze images through the vision adapter. |
+| `delegate_task` | `ALLOW` | Run a worker agent with shared context. |
 
-| Tool | Permission | Description |
-|------|-----------|-------------|
-| `read` | ALLOW | Read files with pagination |
-| `write` | ASK | Write/overwrite files |
-| `patch` | ALLOW | Targeted find-and-replace |
-| `search` | ALLOW | Regex search in files |
-| `execute` | ASK | Run Python code |
-| `web` | ALLOW | Web search (Tavily) |
-| `web_think` | ALLOW | Web search + deep analysis |
-| `do_memory` | ALLOW | Manage USER.md/MEMORY.md |
-
-YAML tools can be loaded from `{workspace}/skills/*/tools.yaml`.
-
-### 6. Feishu Integration
-
-| Component | Lines | Role |
-|-----------|-------|------|
-| `feishu_adapter.py` | 372 | Message parsing, event handling, session routing |
-| `feishu_card.py` | 77 | Card 2.0 JSON builder |
-| `feishu_format.py` | 201 | Markdown → Feishu format, long message segmentation, anti-truncation |
-| `session.py` | 156 | Per-user/chat session state |
-
-### 7. Evidence & Governance
-
-- **Evidence Ledger**: Every tool call hashed and logged to `runs/{run_id}/evidence.jsonl`.
-- **Verification Gate**: Checks tool results for integrity.
-- **Governance Policy**: Risk-based blocking of dangerous operations.
+Tools marked `CONFIRM` must not run through the agent loop without structured
+confirmation metadata: `actor`, tool-scoped `scope`, `reason`, and future
+`expires_at`. Legacy `_confirmed` booleans are rejected and recorded as blocked
+evidence.
 
 ---
 
-## Data Flow
+## Feishu Runtime
 
-```
-User Message
-  │
-  ├─ Session Manager: dedup, command routing
-  │
-  ├─ Agent.run(task):
-  │   ├─ Load SOUL.md + USER.md + MEMORY.md + AGENTS.md → system prompt
-  │   ├─ Plan phase: generate step plan
-  │   ├─ ReAct loop:
-  │   │   ├─ Model.chat(messages, tools)
-  │   │   ├─ Execute tool calls (parallel)
-  │   │   ├─ Evidence ledger: hash + log
-  │   │   ├─ Verification gate: integrity check
-  │   │   └─ Auto-manage context (masking/compression)
-  │   ├─ Auto-reflect: LLM reviews → update MEMORY.md
-  │   └─ Deep-reflect (every 10 runs): pattern analysis
-  │
-  └─ Return result → Feishu format → Send
-```
+| Component | Role |
+|---|---|
+| `yinyo/service.py` | Builds runtime config, agent, adapter, gateway, transport, logs, lock, and stores. |
+| `yinyo/feishu_ws.py` | Feishu official SDK long-connection transport. |
+| `yinyo/feishu_adapter.py` | Feishu API send/download plus HTTP webhook fallback. |
+| `yinyo/gateway.py` | Token verification, event normalization, idempotency, job dispatch, and smoke records. |
+| `yinyo/jobs.py` | Runtime job lifecycle records. |
+| `yinyo/event_store.py` | Durable event idempotency store. |
+| `yinyo/outbox.py` | Processing reactions and reply-delivery side effects. |
+| `yinyo/runtime_log.py` | Structured JSONL runtime logs. |
+| `yinyo/runtime_lock.py` | Single-writer lock for local JSONL stores. |
+
+Local JSONL stores are single-writer. `runtime_lock_path` prevents two local
+service processes from writing the same event, job, log, and smoke files. A
+same-host stale lock with a dead PID can be recovered; foreign-host or
+unparseable locks remain operator blockers.
 
 ---
 
-## Design Decisions
+## Evidence
 
-### Why Pure ReAct (no Code Agent)?
-v3.0 removed the Code Agent sandbox. Pure ReAct is simpler, more transparent, and aligns with how frontier agents (Claude Code, Codex CLI) work. The model decides what tools to call — no intermediate code generation layer.
+YINYO separates generation from verification wherever practical.
 
-### Why File-System Memory (no Vector DB)?
-HERMES's own benchmarks (Letta) show file-system memory can outperform dedicated vector DBs (74% vs lower). Simpler to deploy, easier to debug, no external dependencies.
+| Evidence | Location |
+|---|---|
+| Tool evidence | `runs/*/evidence.jsonl` |
+| File-change manifests | `runs/*/manifest.json` |
+| Runtime logs | `runtime.jsonl` |
+| Runtime jobs | `runtime_jobs.jsonl` |
+| Event idempotency | `gateway_events.jsonl` |
+| Smoke records | `smoke_evidence.jsonl` |
+| Redacted release bundle | `yinyo smoke bundle --output <dir>` |
 
-### Why LLM for Everything?
-DeepSeek V4 costs ~$0.27/M tokens. LLM compression: ~$0.0003/run. Auto-reflect: ~$0.0005/run. Deep-reflect: ~$0.002/10 runs. Total cost per run: < $0.001. Cheaper than maintaining complex rule systems.
+`1.0.0` live smoke records must be backed by matching runtime logs, job records,
+event-store records, and advanced live records. Redacted bundles include file
+hashes and a stable `bundle_digest`; verification recomputes both.
 
-### Why Blind Testing?
-The builder cannot verify their own work. v2.1 was self-reviewed → 48.9%. v3.0+ uses independent sub-agent blind audit → 100%. This is now encoded in AGENTS.md as a non-negotiable rule.
+---
+
+## Release Boundary
+
+Local replay proves product code paths. It does not replace live Feishu
+platform evidence.
+
+The final stable-release guard is:
+
+```bash
+python scripts/verify_release.py --target 1.0.0 --bundle <bundle-dir> --candidate 1.0.0
+```
+
+That command must keep failing until real Feishu long-connection evidence or a
+verified redacted bundle exists.

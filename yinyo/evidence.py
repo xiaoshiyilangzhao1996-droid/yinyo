@@ -2,7 +2,10 @@
 import json, os, re, hashlib
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from governance import SECRET_PATTERNS
+try:
+    from .governance import SECRET_PATTERNS
+except ImportError:
+    from governance import SECRET_PATTERNS
 
 # v8.1: SECRET_PATTERNS 从 governance 统一导入（消除重复定义）
 
@@ -25,11 +28,12 @@ class EvidenceLedger:
         self.path = os.path.join(run_dir, "evidence.jsonl")
         os.makedirs(run_dir, exist_ok=True)
 
-    def record(self, run_id: str, step: int, tool: str, args: dict, result: dict) -> str:
+    def record(self, run_id: str, step: int, tool: str, args: dict, result: dict, correlation_id: str = "") -> str:
         """★ 审计修复 #9: 写入前自动 redact secrets。返回 evidence ref。"""
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "run_id": run_id,
+            "correlation_id": correlation_id,
             "step": step,
             "tool": tool,
             "args": self._redact_args(args),
@@ -42,11 +46,16 @@ class EvidenceLedger:
 
     def _redact_args(self, d: dict) -> dict:
         """Redact 敏感字段。"""
-        return {
-            k: _redact(str(v)) if any(p in k.lower()
-            for p in ["key", "token", "secret", "password", "auth"]) else v
-            for k, v in d.items()
-        }
+        def redact_value(value):
+            if isinstance(value, str):
+                return _redact(value)
+            if isinstance(value, dict):
+                return {k: redact_value(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [redact_value(v) for v in value]
+            return value
+
+        return {k: redact_value(v) for k, v in d.items()}
 
     def _summarize(self, result: dict, max_len: int = 200) -> dict:
         s = json.dumps(result, ensure_ascii=False)
@@ -101,9 +110,10 @@ class RunManifest:
     def __init__(self, run_dir: str):
         self.path = os.path.join(run_dir, "manifest.json")
 
-    def create(self, run_id: str, task: str) -> dict:
+    def create(self, run_id: str, task: str, correlation_id: str = "") -> dict:
         m = {
             "run_id": run_id,
+            "correlation_id": correlation_id,
             "task": task,
             "started": datetime.now(timezone.utc).isoformat(),
             "status": "running",
@@ -118,14 +128,14 @@ class RunManifest:
             "blocked_reason": None
         }
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        with open(self.path, "w") as f:
+        with open(self.path, "w", encoding="utf-8") as f:
             json.dump(m, f, indent=2, ensure_ascii=False)
         return m
 
     def update(self, **kwargs):
-        with open(self.path) as f:
+        with open(self.path, encoding="utf-8") as f:
             m = json.load(f)
         m.update(kwargs)
-        with open(self.path, "w") as f:
+        with open(self.path, "w", encoding="utf-8") as f:
             json.dump(m, f, indent=2, ensure_ascii=False)
         return m

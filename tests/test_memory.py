@@ -122,6 +122,30 @@ class TestTemporalTree:
         assert v1.id not in ids
         assert node.id not in ids
 
+    def test_state_report_tracks_provenance_staleness_and_recovery(self, tmp_path):
+        """state_report 应把长期状态的来源、过期性和恢复状态变成可审计数据。"""
+        tree_path = str(tmp_path / "state_tree.json")
+        tree = TemporalTree(tree_path)
+        old = tree.add("Project state is alpha.", category="Projects", source_run_id="run-old")
+        old.created_at = "2025-01-01T00:00:00+00:00"
+        old.updated_at = "2025-01-01T00:00:00+00:00"
+        tree._save()
+        new = tree.supersede(old.id, "Project state is release candidate.", source_run_id="run-new")
+        archived = tree.add("Temporary rollout note.", category="Projects", source_run_id="run-archive")
+        tree.archive(archived.id)
+
+        recovered = TemporalTree(tree_path)
+        report = recovered.state_report(stale_after_days=30)
+
+        assert report["schema"] == "yinyo.temporal_state_report.v1"
+        assert report["provenance_complete"] is True
+        assert report["missing_provenance"] == []
+        assert report["superseded"] == 1
+        assert report["archived"] == 1
+        assert report["stale"] == 0
+        assert len(recovered.get_audit_trail(old.id)) == 2
+        assert recovered.nodes[new.id].source_run_id == "run-new"
+
 
 class TestVectorCache:
     """VectorCache 语义检索测试。"""

@@ -1,33 +1,39 @@
-# AGENTS.md — YINYO 行为准则
+# AGENTS.md - YINYO Package Rules
 
-以下是铁律，不是建议。
+These package-level rules apply to code under `yinyo/`.
 
-## 验证优先
+## How To Read
 
-- 写代码前读现有代码，不凭想象。
-- 用工具前查文档，不猜参数。
-- 引用任何外部资源前先确认其真实存在。
+1. Start with the nearest module tests in `tests/`.
+2. For runtime and smoke changes, read `yinyo/config.py`, `yinyo/service.py`, `yinyo/smoke.py`, and `yinyo/readiness.py` together.
+3. For Feishu changes, keep `yinyo/feishu_ws.py`, `yinyo/feishu_adapter.py`, `yinyo/gateway.py`, and `yinyo/outbox.py` aligned.
 
-## 落盘才闭环
+## How To Answer
 
-- 内存里的结论不算——文件能 `stat`、URL 能 `curl`、测试能过，才算做完。
-- 不编造确认。没看到输出证据 = 没确认。
+- Name the files changed and the verification commands run.
+- Separate local evidence from live Feishu evidence.
+- Treat missing live evidence as a release blocker, not a documentation detail.
 
-## 简洁优先
+## Hard Rules
 
-- 能用 20 行不引框架，能用一个工具不组合三个。复杂度是负债。
+- Do not bypass token verification, idempotency checks, ACK deadline tracking, job persistence, or outbox delivery evidence.
+- Do not log secret values or raw exception text from service failures.
+- Do not weaken `verify_full_smoke_evidence`, `verify_advanced_live_evidence`, or bundle digest verification to make `1.0.0` pass.
+- Keep HTTP webhook behavior tested, but preserve long connection as the primary `1.0.0` proof path.
+- Add focused tests when touching shared runtime, release-gate, or evidence logic.
 
-## 出错就认
+## Common Links
 
-- 第一次明显失败就汇报，不静默重试，不编原因。
-- 委托独立审计验证自己的输出，不自审。
+- Config validation: `config.py`
+- Service lifecycle: `service.py`
+- Release readiness: `readiness.py`
+- Smoke records and bundles: `smoke.py`
+- Diagnostics: `diagnostics.py`
+- Runtime locks: `runtime_lock.py`
 
-## 保持好奇
+## Risk Points
 
-- 持续关注新工具、新论文、新方法。
-- 跨领域融合——认知科学、系统工程、产品设计，不局限于单一视角。
-
-## 在不确定中行动
-
-- 不等一切就绪才动手。能在雾里走路。
-- 遇到未知时先迈一步，用反馈修正方向。
+- `smoke_mode=true` is only for controlled release smoke and must be rejected for production profiles.
+- Stale same-host locks may be recovered only when the recorded PID no longer exists.
+- Advanced live records require the controlled recorder marker.
+- Candidate `1.0.0` requires verified live evidence or a verified bundle; HTTP-only evidence is not the primary release proof.

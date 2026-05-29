@@ -1,9 +1,14 @@
 # feishu_adapter.py — 飞书适配层 v8.1
 # Webhook 接收 + 消息路由 + 状态反馈 + 文件/媒体处理
 # 对标 GA fsapp.py + Hermes feishu.py + OpenClaw deliver.ts
-import json, os, time, re, threading
+import json, os, time, re
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from feishu_card import build_card_messages, build_text_payload, is_card_invalid_error
+try:
+    from .feishu_card import build_card_messages, build_text_payload, is_card_invalid_error
+    from .gateway import FeishuRuntimeGateway
+except ImportError:
+    from feishu_card import build_card_messages, build_text_payload, is_card_invalid_error
+    from gateway import FeishuRuntimeGateway
 
 try:
     import requests as http
@@ -25,6 +30,14 @@ AUDIO_EXTS = {".opus", ".mp3", ".wav", ".m4a", ".aac"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
 
+def _as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 class FeishuAdapter:
     """飞书适配器。Webhook 接收 + API 发送。"""
 
@@ -34,9 +47,16 @@ class FeishuAdapter:
         self.app_id = self.config.get("app_id", os.environ.get("FEISHU_APP_ID", ""))
         self.app_secret = self.config.get("app_secret", os.environ.get("FEISHU_APP_SECRET", ""))
         self.verify_token = self.config.get("verify_token", os.environ.get("FEISHU_VERIFY_TOKEN", ""))
+        self.smoke_mode = _as_bool(self.config.get("smoke_mode", os.environ.get("YINYO_SMOKE_MODE", False)))
         self._tenant_token = None
         self._token_expiry = 0
         self.server: HTTPServer | None = None
+        self.gateway = FeishuRuntimeGateway(
+            adapter=self,
+            agent=self.agent,
+            verify_token=self.verify_token,
+            smoke_mode=self.smoke_mode,
+        )
         os.makedirs(MEDIA_DIR, exist_ok=True)
 
     # ── Token 管理 ────────────────────────────────────────────────
@@ -65,7 +85,7 @@ class FeishuAdapter:
     # ── 消息发送 ──────────────────────────────────────────────────
 
     def send_message(self, chat_id: str, text: str, reply_to: str = None,
-                     files: list = None) -> dict:
+                     files: list = None, force_fallback: bool = False) -> dict:
         """发送消息到飞书。自动 Card 2.0 + 分段 + fallback。
 
         Args:
@@ -79,6 +99,14 @@ class FeishuAdapter:
         """
         results = []
         fallback = False
+        if force_fallback:
+            text_result = self._send_text(chat_id, text, reply_to)
+            return {
+                "success": bool(text_result.get("success")),
+                "message_ids": [text_result.get("message_id", "")],
+                "fallback": True,
+                "error": text_result.get("error"),
+            }
 
         # 先尝试 Card 2.0
         cards = build_card_messages(text)
@@ -267,6 +295,15 @@ class FeishuAdapter:
 
     # ── Webhook Server ────────────────────────────────────────────
 
+    def handle_webhook_event(self, event: dict, async_dispatch: bool = True) -> tuple[int, dict]:
+        """Handle a parsed Feishu webhook event.
+
+        Returns an HTTP-like `(status_code, response_body)` tuple so tests can
+        exercise webhook routing without starting a server.
+        """
+        result = self.gateway.handle_event(event, async_dispatch=async_dispatch)
+        return result.status_code, result.body
+
     def start_server(self, host: str = "0.0.0.0", port: int = 8080):
         """启动 Webhook 服务器（阻塞）。"""
         adapter = self
@@ -281,37 +318,8 @@ class FeishuAdapter:
                     self._respond(400, {"error": "Invalid JSON"})
                     return
 
-                # URL 验证（飞书首次配置时）
-                if event.get("type") == "url_verification":
-                    token = event.get("token", "")
-                    if adapter.verify_token and token != adapter.verify_token:
-                        self._respond(403, {})
-                        return
-                    self._respond(200, {"challenge": event.get("challenge", "")})
-                    return
-
-                # 消息事件
-                if event.get("type") == "event_callback":
-                    inner = event.get("event", {})
-                    msg = inner.get("message", {})
-                    msg_type = msg.get("message_type", "text")
-                    if msg_type == "text":
-                        threading.Thread(
-                            target=adapter._handle_text_message,
-                            args=(inner,),
-                            daemon=True
-                        ).start()
-                    elif msg_type == "image":
-                        # v8.0: 图片消息 → 下载 + 调用 do_vision
-                        threading.Thread(
-                            target=adapter._handle_image_message,
-                            args=(inner,),
-                            daemon=True
-                        ).start()
-                    self._respond(200, {})
-                    return
-
-                self._respond(200, {})
+                code, response = adapter.handle_webhook_event(event, async_dispatch=True)
+                self._respond(code, response)
 
             def _respond(self, code: int, data: dict):
                 self.send_response(code)
@@ -356,8 +364,11 @@ class FeishuAdapter:
 
         try:
             result = self.agent.handle_message(user_id, chat_id, text, already_deduped=True)
-        except Exception as e:
-            result = {"text": f"❌ 处理出错: {e}", "files": []}
+        except Exception:
+            result = {
+                "text": "YINYO could not complete this request. The operator evidence records contain the failure type.",
+                "files": [],
+            }
 
         # 移除 processing reaction
         if message_id:
@@ -405,9 +416,12 @@ class FeishuAdapter:
 
         # 调用 do_vision
         try:
-            from vision_adapter import get_vision_adapter
+            try:
+                from .vision_adapter import get_vision_adapter
+            except ImportError:
+                from vision_adapter import get_vision_adapter
             adapter = get_vision_adapter()
-            vision_result = adapter.describe(image_path, "请详细描述这张图片的内容")
+            vision_result = adapter.describe(image_path, "Describe the image contents in detail.")
             description = vision_result.get("description", "")
             if vision_result.get("error"):
                 description = f"[Image received but vision failed: {vision_result['error']}]"
@@ -423,8 +437,11 @@ class FeishuAdapter:
 
         try:
             result = self.agent.handle_message(user_id, chat_id, text, already_deduped=True)
-        except Exception as e:
-            result = {"text": f"\u274c 处理出错: {e}", "files": []}
+        except Exception:
+            result = {
+                "text": "YINYO could not complete this request. The operator evidence records contain the failure type.",
+                "files": [],
+            }
 
         if message_id:
             self.remove_reaction(message_id)

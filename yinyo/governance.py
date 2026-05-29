@@ -56,17 +56,22 @@ class RiskPolicy:
 
     def _in_workspace(self, path: str) -> bool:
         """检查 path 是否在 workspace 内。"""
-        abs_path = os.path.abspath(path)
-        abs_workspace = os.path.abspath(self.workspace)
-        return abs_path.startswith(abs_workspace)
+        abs_workspace = os.path.realpath(os.path.abspath(self.workspace))
+        if os.path.isabs(path):
+            abs_path = os.path.realpath(path)
+        else:
+            abs_path = os.path.realpath(os.path.join(abs_workspace, path))
+        return abs_path == abs_workspace or abs_path.startswith(abs_workspace + os.sep)
 
 
 # Secret patterns (v3.1: BU-03 修复 — 增加无引号格式)
 SECRET_PATTERNS = [
+    # JSON/TOML-style quoted keys and values, e.g. "api_key": "..."
+    r'(?i)[\'"]?(api[_-]?key|token|secret|password|auth)[\'"]?[ \t]*[:=][ \t]*[\'"][^\'"\n]{8,}[\'"]',
     # 引号包围的值（原有）
-    r'(?i)(api[_-]?key|token|secret|password|auth)\s*[:=]\s*[\'"][^\'"]+[\'"]',
+    r'(?i)(api[_-]?key|token|secret|password|auth)[ \t]*[:=][ \t]*[\'"][^\'"\n]+[\'"]',
     # 无引号值（BU-03 修复）：key=value 或 key: value，最少 8 字符防误报
-    r'(?i)(api[_-]?key|token|secret|password|auth)\s*[:=]\s*([^\s\'"\n]{8,})',
+    r'(?i)(api[_-]?key|token|secret|password|auth)[ \t]*[:=][ \t]*([^\s\'"\n]{8,})',
     # 已知 secret 前缀格式
     r'sk-[a-zA-Z0-9]{20,}',
     r'ghp_[a-zA-Z0-9]{36}',

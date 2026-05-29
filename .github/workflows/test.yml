@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,28 @@ jobs:
         run: |
           pytest tests/ -v --cov=yinyo --cov-report=term-missing
 
+      - name: Verify release metadata
+        run: |
+          python scripts/verify_release.py
+
+      - name: Verify public tree
+        run: |
+          python scripts/verify_public_tree.py
+
+      - name: Verify secret hygiene
+        run: |
+          python scripts/verify_secrets.py
+
+      - name: Replay Feishu scenarios
+        run: |
+          python scripts/replay_scenarios.py
+          python scripts/replay_scenarios.py --matrix
+
       - name: Verify package
         run: |
           pip install build
-          python -m build --wheel
+          python -m build
+
+      - name: Clean install smoke
+        run: |
+          python scripts/verify_wheel.py --skip-build

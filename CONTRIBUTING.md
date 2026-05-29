@@ -1,155 +1,111 @@
 # Contributing to YINYO
 
-Thank you for your interest in contributing to YINYO (隐曜)!
-
-This guide covers the development workflow, code standards, and contribution priorities.
-
----
-
-## Contribution Priorities
-
-We value contributions in this order:
-
-1. **Bug fixes** — crashes, incorrect behavior, memory corruption. Always top priority.
-2. **Feishu compatibility** — new Feishu API versions, message format changes, Card 2.0 improvements.
-3. **Security hardening** — prompt injection, path traversal, credential leaks. See [SECURITY.md](SECURITY.md).
-4. **DeepSeek optimization** — context caching, parallel tool calls, token efficiency.
-5. **New tools** — sparingly. YINYO's philosophy is minimal tool surface. Most capabilities should be YAML skills, not hardcoded tools.
-6. **Documentation** — fixes, clarifications, new examples.
-7. **Tests** — expanding the blind test suite.
+YINYO is a Feishu-first agent product. Contributions should strengthen the
+runtime, evidence chain, packaging, or operator workflow without widening the
+product beyond that boundary.
 
 ---
 
-## Development Setup
+## Priorities
 
-### Prerequisites
+1. Release blockers: live smoke workflow, redaction, diagnostics, packaging,
+   and release verification.
+2. Feishu compatibility: long connection, HTTP fallback, message formats, and
+   Card 2.0 behavior.
+3. Reliability: idempotency, durable jobs, outbox behavior, evidence records,
+   and failure states.
+4. Security hardening: token handling, prompt-injection resistance, path safety,
+   and secret scans.
+5. Documentation: corrections that keep claims tied to source, tests, or live
+   evidence.
+6. New tools: only when they fit the small audited tool surface.
 
-| Requirement | Notes |
-|-------------|-------|
-| Python 3.11+ | Core runtime |
-| DeepSeek API key | `DEEPSEEK_API_KEY` env var |
-| Feishu app credentials | For integration testing (optional) |
+---
 
-### Setup
+## Setup
 
 ```bash
 git clone https://github.com/xiaoshiyilangzhao1996-droid/yinyo.git
 cd yinyo
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
-### Run Tests
+Optional live testing requires a Feishu self-built app and model-provider keys.
+Do not commit local config or raw evidence files.
+
+---
+
+## Checks
+
+Run the focused checks for your change, then run the release-oriented local
+suite before handing off broad changes:
 
 ```bash
-# Blind test suite (recommended)
-python tests/run_blind_test.py
-
-# Unit tests
-pytest tests/ -v
+python -m pytest tests -q
+python scripts/replay_scenarios.py --matrix
+python scripts/verify_release.py --json
+python scripts/verify_secrets.py
+python -m build
+python scripts/verify_wheel.py --skip-build
 ```
+
+For a `1.0.0` claim, the strict gate must pass with real live evidence or a
+verified redacted bundle:
+
+```bash
+python scripts/verify_release.py --target 1.0.0 --bundle <bundle-dir> --candidate 1.0.0
+```
+
+If that command fails because live Feishu evidence is missing, report the
+blocker. Do not weaken the verifier or create synthetic live records.
+
+---
+
+## Code Rules
+
+- Keep changes small and test-backed.
+- Preserve Feishu as the primary product surface.
+- Keep HTTP webhook behavior tested, but do not replace the long-connection
+  release proof path.
+- Add or update acceptance checks in `docs/spec.md` for new product claims.
+- Keep secrets out of source, docs, memory, logs, and shared artifacts.
+- Use the controlled smoke and advanced evidence commands instead of editing
+  JSONL evidence by hand.
 
 ---
 
 ## Architecture
 
-YINYO is a **single-package Python library**. The core loop is in `agent.py`:
+The main runtime path is:
 
+```text
+Feishu event
+  -> long connection or HTTP fallback
+  -> runtime gateway
+  -> durable idempotency
+  -> runtime job
+  -> YinyoAgent
+  -> outbox reply
+  -> runtime and smoke evidence
 ```
-YinyoAgent
-├── run(task)          # Core ReAct + Plan + Reflect loop
-├── handle_message()   # Feishu message entry point
-├── _reflect_on_run()  # Post-run LLM reflection
-└── _deep_reflect()    # Periodic cross-run pattern analysis
-```
 
-### Key Design Decisions
+Core files:
 
-1. **Pure ReAct, no Code Agent** — v3.0 removed the sandbox. All tool calls go through the loop.
-2. **LLM for everything** — compression, reflection, memory management all use LLM (not rules). DeepSeek V4 is cheap enough.
-3. **File-system memory** — no vector databases. MEMORY.md is the source of truth. VectorCache is TF-IDF for search.
-4. **Feishu-first** — message format, session management, Card 2.0 are first-class.
+| File | Role |
+|---|---|
+| `yinyo/service.py` | Service entry and runtime assembly. |
+| `yinyo/feishu_ws.py` | Feishu long-connection transport. |
+| `yinyo/feishu_adapter.py` | HTTP fallback and Feishu API boundary. |
+| `yinyo/gateway.py` | Event verification, normalization, idempotency, and job dispatch. |
+| `yinyo/smoke.py` | Live smoke records, evidence chains, bundles, and verification. |
+| `scripts/verify_release.py` | Release readiness and final candidate gate. |
 
 ---
 
-## Adding a Tool
+## Commit Hygiene
 
-Tools are registered in `tools.py`:
-
-```python
-from tools import tool, registry
-
-@tool(permission="ALLOW")
-def my_tool(param: str) -> dict:
-    """Tool description for the LLM."""
-    # implementation
-    return {"result": "..."}
-
-# Auto-registered via decorator
-```
-
-Tools must:
-- Be idempotent or clearly state side effects
-- Return JSON-serializable results
-- Include error handling (never crash the agent loop)
-- Document permission level (ALLOW / ASK / DENY)
-
----
-
-## Adding a YAML Skill
-
-Skills live in `{workspace}/skills/{hash}/SKILL.md` with optional `tools.yaml`:
-
-```yaml
-# tools.yaml
-tools:
-  - name: my_custom_tool
-    description: What this tool does
-    command: python scripts/my_script.py {param}
-    parameters:
-      param:
-        type: string
-        description: Parameter description
-```
-
----
-
-## Code Standards
-
-- **Python 3.11+** with type hints.
-- **Max 500 lines per file** — if a file grows beyond this, split it.
-- **Docstrings required** for all public functions.
-- **Evidence-first**: every tool call result must be hashable and verifiable.
-- **Blind test pass**: all changes must pass the blind test suite (independent agent audit).
-
-### Commit Messages
-
-```
-type: Short description (max 72 chars)
-
-- Detailed bullet points
-- What changed and why
-
-Version: vX.Y
-Pass Rate: XX%
-```
-
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
-
----
-
-## Blind Test Requirement
-
-YINYO uses **blind testing** — an independent sub-agent audits the code without seeing the source:
-
-1. Write code + update spec.
-2. Delegate blind test to independent sub-agent: "Here is the CLI usage and test suite. Run all 12 tests. Do NOT read the source code."
-3. Fix all failures.
-4. Re-run blind test until 100%.
-
-This is non-negotiable. v2.1 failed because we skipped it (48.9%). v3.0+ is 100% because we didn't.
-
----
-
-## Questions?
-
-Open an issue or discussion on GitHub.
+- Do not commit `.venv/`, build artifacts, local `workspace/`, raw `.env`, or
+  unredacted runtime JSONL files.
+- Keep public versioning SemVer-based; internal P-series gates are not release
+  versions.
+- Do not claim `1.0.0` readiness unless the strict candidate gate passes.

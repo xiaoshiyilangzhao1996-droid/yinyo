@@ -27,6 +27,9 @@ Thumbs.db
 # Environment
 .env
 .env.local
+*.env
+!.env.example
+!*.env.example
 
 # YINYO runtime
 *.db
@@ -34,6 +37,17 @@ cache/
 runs/
 shadow/
 test_ws/
+temp/
+workspace/
+release-artifacts/
+runtime.jsonl
+runtime_jobs.jsonl
+gateway_events.jsonl
+smoke_evidence.jsonl
+*.runtime.jsonl
+*.runtime_jobs.jsonl
+*.gateway_events.jsonl
+*.smoke_evidence.jsonl
 
 # Spec files (keep in repo, but exclude from package)
 tmp/

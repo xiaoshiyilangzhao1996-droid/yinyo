@@ -88,3 +88,76 @@ class TestModelGateway:
         stats = model.cache_stats
         assert "hits" in stats
         assert "misses" in stats
+
+    def test_api_timeout_is_configurable(self, monkeypatch):
+        import model as model_module
+
+        captured = {}
+
+        class Response:
+            status_code = 200
+            headers = {}
+
+            def json(self):
+                return {
+                    "model": "deepseek-v4-flash",
+                    "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                }
+
+        class Requests:
+            @staticmethod
+            def post(url, headers, json, timeout):
+                captured["timeout"] = timeout
+                return Response()
+
+        monkeypatch.setattr(model_module, "requests", Requests)
+        gateway = ModelGateway(api_key="sk-test", timeout_seconds=9)
+
+        result = gateway.chat(messages=[{"role": "user", "content": "hello"}])
+
+        assert result["content"] == "ok"
+        assert captured["timeout"] == 9
+
+    def test_provider_retry_attempts_are_observable(self, monkeypatch):
+        import model as model_module
+
+        monkeypatch.setattr(model_module, "requests", object())
+        gateway = ModelGateway(api_key="sk-test", retry_count=1, retry_backoff_seconds=0)
+        calls = []
+
+        def fake_call_api(messages, tools, model, thinking, max_tokens, temperature, api_key=None, base_url=None):
+            calls.append(model)
+            if len(calls) == 1:
+                return {"error": "timeout"}
+            return {"content": "ok", "model": model, "finish_reason": "stop"}
+
+        gateway._call_api = fake_call_api
+        result = gateway.chat(messages=[{"role": "user", "content": "hello"}])
+
+        assert result["content"] == "ok"
+        assert calls == ["deepseek-v4-flash", "deepseek-v4-flash"]
+        assert result["_attempts"][0]["error"] == "timeout"
+        assert result["_attempts"][1]["ok"] is True
+
+    def test_provider_fallback_attempts_are_observable(self, monkeypatch):
+        import model as model_module
+
+        monkeypatch.setattr(model_module, "requests", object())
+        gateway = ModelGateway(api_key="sk-test", retry_count=0)
+        calls = []
+
+        def fake_call_api(messages, tools, model, thinking, max_tokens, temperature, api_key=None, base_url=None):
+            calls.append(model)
+            if model == "deepseek-v4-flash":
+                return {"error": "rate limited"}
+            return {"content": "ok", "model": model, "finish_reason": "stop"}
+
+        gateway._call_api = fake_call_api
+        result = gateway.chat(messages=[{"role": "user", "content": "hello"}])
+
+        assert result["_fallback"] is True
+        assert result["_fallback_from"] == "deepseek-v4-flash"
+        assert result["model"] == "deepseek-v4-pro"
+        assert calls == ["deepseek-v4-flash", "deepseek-v4-pro"]
+        assert [item["model"] for item in result["_attempts"]] == ["deepseek-v4-flash", "deepseek-v4-pro"]

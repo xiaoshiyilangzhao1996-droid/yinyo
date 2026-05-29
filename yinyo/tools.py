@@ -1,5 +1,6 @@
 # tools.py — 原子工具系统 v8.1（BU-01/BU-02 安全修复）
 import os, json, hashlib, subprocess, glob, re
+from datetime import datetime, timezone
 from typing import Callable, get_type_hints
 
 # ============================================================
@@ -15,6 +16,11 @@ def set_tool_workspace(workspace: str):
     """设置工具层的 workspace 路径，用于路径穿越防护。agent.py 在 init 时调用。"""
     global _tool_workspace
     _tool_workspace = os.path.abspath(workspace)
+
+def set_parent_agent(agent):
+    """Set the active parent agent used by delegate_task."""
+    global _yinyo_agent
+    _yinyo_agent = agent
 
 def _validate_path(path: str) -> str:
     """安全路径校验：拒绝绝对路径 + 路径穿越。返回规范化后的安全路径。
@@ -173,8 +179,11 @@ def do_run(command: str, timeout: int = 60, workdir: str = ".") -> dict:
         if re.search(d, command):
             return {"error": f"Blocked dangerous command: {command[:100]}", "exit_code": -1}
     try:
+        safe_workdir = _validate_path(workdir)
+        if not os.path.isdir(safe_workdir):
+            return {"error": f"Workdir not found: {workdir}", "exit_code": -1}
         r = subprocess.run(command, shell=True, capture_output=True, text=True,
-                          timeout=timeout, cwd=workdir)
+                          timeout=timeout, cwd=safe_workdir)
         return {"stdout": r.stdout[-5000:], "stderr": r.stderr[-2000:], "exit_code": r.returncode}
     except subprocess.TimeoutExpired:
         return {"error": f"Timeout after {timeout}s", "exit_code": -1}
@@ -461,22 +470,89 @@ def load_yaml_tools(yaml_path: str, registry: ToolRegistry) -> int:
     return count
 
 
+def _normalize_confirmation(tool_name: str, raw: object) -> tuple[dict | None, str]:
+    """Validate operator confirmation metadata for CONFIRM tools."""
+    if not isinstance(raw, dict):
+        return None, "confirmation metadata is required"
+
+    actor = str(raw.get("actor", "")).strip()
+    scope = str(raw.get("scope", "")).strip()
+    reason = str(raw.get("reason", "")).strip()
+    expires_at = str(raw.get("expires_at", "")).strip()
+
+    if not actor:
+        return None, "confirmation.actor is required"
+    if scope not in {tool_name, f"tool:{tool_name}"}:
+        return None, f"confirmation.scope must match {tool_name}"
+    if len(reason) < 3:
+        return None, "confirmation.reason is required"
+    if not expires_at:
+        return None, "confirmation.expires_at is required"
+    try:
+        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None, "confirmation.expires_at must be ISO-8601"
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    if expiry <= datetime.now(timezone.utc):
+        return None, "confirmation.expires_at is expired"
+
+    return {
+        "actor": actor,
+        "scope": scope,
+        "reason": reason,
+        "expires_at": expiry.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }, ""
+
+
 def execute_tool_with_evidence(registry: ToolRegistry, name: str, args: dict,
-                               evidence_ledger, governance, run_id: str, step: int) -> dict:
+                               evidence_ledger, governance, run_id: str, step: int,
+                               correlation_id: str = "") -> dict:
     """★ 审计修复 #10: 执行工具 + Governance Gate + Secret Scan + Evidence Record。完整管线。"""
+    tool_args = dict(args or {})
+    raw_confirmation = tool_args.pop("confirmation", None)
+    legacy_confirmed = tool_args.pop("_confirmed", None)
+    evidence_args = dict(tool_args)
+    tool = registry._tools.get(name)
+    if tool and tool.permission == "CONFIRM":
+        confirmation, confirm_error = _normalize_confirmation(name, raw_confirmation)
+        if legacy_confirmed is not None and raw_confirmation is None:
+            confirm_error = "legacy _confirmed is not sufficient; structured confirmation metadata is required"
+        if confirmation:
+            evidence_args["confirmation"] = confirmation
+        else:
+            result = {"error": f"Confirmation required for tool: {name}: {confirm_error}", "_blocked": True}
+            evidence_ref = ""
+            if evidence_ledger:
+                evidence_ref = evidence_ledger.record(run_id, step, name, evidence_args, result, correlation_id=correlation_id)
+            result["_evidence_ref"] = evidence_ref
+            return result
+
     # 1. Governance Gate（前置拦截）
     if governance:
-        gate = governance.gate_for_tool(name, args)
+        gate = governance.gate_for_tool(name, tool_args)
         if gate.action == "blocked":
-            return {"error": f"Blocked by risk policy: {gate.reason}", "_blocked": True}
-    
+            result = {"error": f"Blocked by risk policy: {gate.reason}", "_blocked": True}
+            if "confirmation" in evidence_args:
+                result["_confirmation"] = evidence_args["confirmation"]
+            evidence_ref = ""
+            if evidence_ledger:
+                evidence_ref = evidence_ledger.record(run_id, step, name, evidence_args, result, correlation_id=correlation_id)
+            result["_evidence_ref"] = evidence_ref
+            return result
+
     # 2. 执行工具
-    result = registry.dispatch(name, args)
-    
+    result = registry.dispatch(name, tool_args)
+    if "confirmation" in evidence_args and not result.get("_blocked"):
+        result["_confirmation"] = evidence_args["confirmation"]
+
     # 3. ★ Secret Scan（后置扫描 + 实际脱敏）
     if governance and not result.get("_blocked"):
         result_str = json.dumps(result, ensure_ascii=False)
-        from governance import scan_secrets as _scan_secrets, redact_secrets as _redact_fn
+        try:
+            from .governance import scan_secrets as _scan_secrets, redact_secrets as _redact_fn
+        except ImportError:
+            from governance import scan_secrets as _scan_secrets, redact_secrets as _redact_fn
         found = _scan_secrets(result_str)
         if found:
             result["_redacted"] = True
@@ -484,12 +560,12 @@ def execute_tool_with_evidence(registry: ToolRegistry, name: str, args: dict,
             for key in list(result.keys()):
                 if isinstance(result[key], str):
                     result[key] = _redact_fn(result[key])
-    
+
     # 4. Evidence Ledger
     evidence_ref = ""
     if evidence_ledger:
-        evidence_ref = evidence_ledger.record(run_id, step, name, args, result)
-    
+        evidence_ref = evidence_ledger.record(run_id, step, name, evidence_args, result, correlation_id=correlation_id)
+
     result["_evidence_ref"] = evidence_ref
     return result
 
@@ -516,7 +592,10 @@ def do_memory(action: str, target: str, content: str = "", old_text: str = "") -
         content: Content to add or replacement text
         old_text: (replace/remove) Substring to match existing entry
     """
-    from memory_tool import memory_add, memory_replace, memory_remove
+    try:
+        from .memory_tool import memory_add, memory_replace, memory_remove
+    except ImportError:
+        from memory_tool import memory_add, memory_replace, memory_remove
     
     if action == "add":
         return memory_add(target, content, _memory_workspace)
@@ -543,7 +622,10 @@ def do_vision(image_source: str, query: str = "请详细描述这张图片的内
         image_source: Local file path, image URL, or base64 data URL
         query: What to ask about the image (default: detailed description)
     """
-    from vision_adapter import get_vision_adapter
+    try:
+        from .vision_adapter import get_vision_adapter
+    except ImportError:
+        from vision_adapter import get_vision_adapter
     adapter = get_vision_adapter()
     result = adapter.describe(image_source, query)
     return result
@@ -567,7 +649,10 @@ def delegate_task(goal: str, context: str = "") -> dict:
         goal: The task description for the worker agent
         context: Additional context (optional, parent context is auto-shared)
     """
-    from delegate import SubAgent
+    try:
+        from .delegate import SubAgent
+    except ImportError:
+        from delegate import SubAgent
     agent = _yinyo_agent
     if not agent:
         return {"error": "delegate_task: no parent agent found"}
@@ -584,6 +669,15 @@ def delegate_task(goal: str, context: str = "") -> dict:
         "status": result.status,
         "run_id": result.run_id,
         "tool_traces_count": len(result.tool_traces),
+        "tool_names": [trace[0] for trace in result.tool_traces],
+        "trace_refs": [
+            {
+                "tool": trace[0],
+                "args_keys": sorted(list(trace[1].keys())) if isinstance(trace[1], dict) else [],
+                "ok": not (isinstance(trace[2], dict) and trace[2].get("error")),
+            }
+            for trace in result.tool_traces
+        ],
         "error": result.error,
     }
 

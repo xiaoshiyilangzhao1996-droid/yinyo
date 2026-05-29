@@ -1,7 +1,10 @@
 # feishu_card.py — 飞书 Card 2.0 消息构建器 v1.0
 # 对标 Hermes feishu.py _build_markdown_card_payload() + OpenClaw deliver.ts
 import json
-from feishu_format import optimize, split_long_message, strip_markdown_to_plain
+try:
+    from .feishu_format import optimize, split_long_message, strip_markdown_to_plain
+except ImportError:
+    from feishu_format import optimize, split_long_message, strip_markdown_to_plain
 
 # Feishu Card 2.0 错误码
 CARD_INVALID_ERROR = 230099

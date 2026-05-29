@@ -5,7 +5,10 @@
 """
 
 import os, json
-from memory import MemoryStore
+try:
+    from .memory import MemoryStore
+except ImportError:
+    from memory import MemoryStore
 
 MEMORY_WORKSPACE: str | None = None
 

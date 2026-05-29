@@ -36,6 +36,22 @@ class ContextManager:
 
         return estimated
 
+    def retention_report(self, protected_texts: list[str] = None) -> dict:
+        """Report long-context retention state for acceptance tests and audits."""
+        protected_texts = protected_texts or []
+        context_text = "\n".join(str(m.get("content", "")) for m in self.messages if isinstance(m, dict))
+        masked_count = sum(
+            1 for m in self.messages
+            if isinstance(m, dict) and "[Observation masked" in str(m.get("content", ""))
+        )
+        return {
+            "estimated_tokens": self._estimate_tokens(),
+            "masked_observations": masked_count,
+            "compress_count": self._compress_count,
+            "dag_nodes": len(self._dag_nodes),
+            "protected_present": {text: text in context_text for text in protected_texts},
+        }
+
     def get_messages(self) -> list:
         return self.messages
 

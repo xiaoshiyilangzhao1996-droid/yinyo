@@ -1,0 +1,45 @@
+include AGENTS.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include LICENSE
+include MAINTENANCE.md
+include README.md
+include README.zh-CN.md
+include RELEASE_NOTES.md
+include SECURITY.md
+include pyproject.toml
+include yinyo.env.example
+
+graft .github
+graft corpus
+graft docs
+graft examples
+graft scripts
+graft tests
+
+prune .git
+prune .mypy_cache
+prune .pytest_cache
+prune .ruff_cache
+prune .venv
+prune build
+prune dist
+prune htmlcov
+prune release-artifacts
+prune temp
+prune workspace
+prune yinyo_agent.egg-info
+
+recursive-exclude * __pycache__
+recursive-exclude * *.py[cod]
+recursive-exclude * *.pyc*
+global-exclude *.db
+global-exclude *.env
+global-exclude *.runtime.jsonl
+global-exclude *.runtime_jobs.jsonl
+global-exclude *.gateway_events.jsonl
+global-exclude *.smoke_evidence.jsonl
+global-exclude *.py[cod]
+global-exclude *.pyc*
+global-exclude __pycache__
+global-exclude .DS_Store

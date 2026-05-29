@@ -26,13 +26,18 @@ class ModelGateway:
     """DeepSeek-first model gateway with provider chain fallback."""
 
     def __init__(self, api_key: str = None, base_url: str = "https://api.deepseek.com",
-                 default_model: str = "deepseek-v4-flash", thinking: ThinkingMode = ThinkingMode.NON_THINK):
+                 default_model: str = "deepseek-v4-flash", thinking: ThinkingMode = ThinkingMode.NON_THINK,
+                 timeout_seconds: int = 120, retry_count: int = 0, retry_backoff_seconds: float = 0):
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
         self.base_url = base_url.rstrip("/")
         self.default_model = default_model
         self.thinking = thinking
+        self.timeout_seconds = timeout_seconds
+        self.retry_count = retry_count
+        self.retry_backoff_seconds = retry_backoff_seconds
         self._cache_hits = 0
         self._cache_misses = 0
+        self.last_attempts = []
 
         # v8.0: Provider chain
         self.provider_chain = self._build_provider_chain()
@@ -60,22 +65,40 @@ class ModelGateway:
         model = self.default_model
         thinking = thinking or self.thinking
 
+        if hasattr(self, "_provider_mock_queue") and self._provider_mock_queue:
+            return self._chat_provider_mock()
+
         if not self.api_key or not requests:
             return self._mock_response(messages, model, tools)
 
         # v8.0: 遍历 provider chain
+        self.last_attempts = []
         for i, provider in enumerate(self.provider_chain):
-            result = self._call_api(
-                messages, tools, provider["model"], thinking, max_tokens, temperature,
-                api_key=provider["api_key"], base_url=provider["base_url"],
+            result = self._call_provider_with_retries(
+                messages, tools, provider, thinking, max_tokens, temperature,
             )
             if "error" not in result:
+                result["_attempts"] = list(self.last_attempts)
                 if i > 0:
                     result["_fallback"] = True
                     result["_fallback_from"] = self.provider_chain[0]["model"]
                 return result
 
         # 全部失败
+        return {"error": "All providers in chain exhausted", "_attempts": list(self.last_attempts)}
+
+    def _chat_provider_mock(self) -> dict:
+        first_model = self.provider_chain[0]["model"] if self.provider_chain else self.default_model
+        for i, provider in enumerate(self.provider_chain):
+            if not self._provider_mock_queue:
+                return {"error": "Provider mock queue exhausted"}
+            result = self._provider_mock_queue.pop(0)
+            if "error" not in result:
+                result.setdefault("model", provider["model"])
+                if i > 0:
+                    result["_fallback"] = True
+                    result["_fallback_from"] = first_model
+                return result
         return {"error": "All providers in chain exhausted"}
 
     def chat_with_retry(self, messages: list, tools: list = None, thinking: ThinkingMode = None,
@@ -89,6 +112,30 @@ class ModelGateway:
             if attempt < max_retries:
                 time.sleep(2 ** attempt)
         return {"error": f"All {max_retries+1} attempts failed: {last_error}"}
+
+    def _call_provider_with_retries(self, messages: list, tools: list, provider: dict,
+                                    thinking: ThinkingMode, max_tokens: int,
+                                    temperature: float) -> dict:
+        attempts = max(0, int(self.retry_count)) + 1
+        last_result = {"error": "provider not attempted"}
+        for attempt in range(1, attempts + 1):
+            result = self._call_api(
+                messages, tools, provider["model"], thinking, max_tokens, temperature,
+                api_key=provider["api_key"], base_url=provider["base_url"],
+            )
+            self.last_attempts.append({
+                "provider": provider["provider"],
+                "model": provider["model"],
+                "attempt": attempt,
+                "ok": "error" not in result,
+                "error": result.get("error", ""),
+            })
+            if "error" not in result:
+                return result
+            last_result = result
+            if attempt < attempts and self.retry_backoff_seconds:
+                time.sleep(float(self.retry_backoff_seconds) * attempt)
+        return last_result
 
     def _call_api(self, messages: list, tools: list, model: str,
                   thinking: ThinkingMode, max_tokens: int, temperature: float,
@@ -113,7 +160,7 @@ class ModelGateway:
             payload["temperature"] = temperature
 
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            resp = requests.post(url, headers=headers, json=payload, timeout=self.timeout_seconds)
             data = resp.json()
 
             if resp.status_code != 200:
@@ -181,6 +228,10 @@ class ModelGateway:
     def clear_mock_responses(self):
         """清空 mock 队列。"""
         self._mock_queue = []
+
+    def set_provider_mock_responses(self, responses: list[dict]):
+        """Set per-provider responses for testing fallback behavior."""
+        self._provider_mock_queue = list(responses)
 
     @property
     def cache_stats(self) -> dict:

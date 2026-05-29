@@ -1,67 +1,113 @@
 # YINYO Security Policy
 
-## Reporting a Vulnerability
+## Reporting
 
-Report privately via [GitHub Security Advisories](https://github.com/xiaoshiyilangzhao1996-droid/yinyo/security/advisories/new).
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/xiaoshiyilangzhao1996-droid/yinyo/security/advisories/new).
 
 A useful report includes:
+
 - Concise description and severity assessment.
 - Affected component with file path and line range.
-- Environment details (Python version, OS, DeepSeek model version).
+- Environment details, including Python version, OS, and model provider.
 - Reproduction steps against the latest release.
-- Which trust boundary is crossed (see §2).
+- The trust boundary that was crossed.
 
 ---
 
 ## Trust Model
 
-YINYO is a **single-tenant personal agent**. It runs on the user's own infrastructure and operates within the user's trust envelope.
+YINYO is a single-tenant personal agent. It runs on the deployer's own
+infrastructure and operates inside that deployer's trust envelope.
 
-### Security Boundary
+The operating system is the only hard security boundary. The governance policy,
+verification gate, and tool allowlist reduce accidental damage, but they are not
+containment against an adversarial process or compromised host.
 
-The only security boundary is the **operating system**. Nothing inside the agent process constitutes containment — not the governance policy engine, not the verification gate, not the tool allowlist.
+---
 
-### Attack Surfaces
+## Attack Surfaces
 
 | Surface | Risk | Mitigation |
-|---------|------|-----------|
-| **LLM-emitted shell commands** | High — model may emit destructive commands | Governance policy blocks risky patterns; verification gate requires hash match |
-| **Prompt injection via Feishu** | Medium — malicious users in group chats | Session isolation per user/chat; governance policy per session |
-| **Memory file manipulation** | Low — if attacker has filesystem access, agent is compromised anyway | MEMORY.md is plain text; no executable content |
-| **API key leakage** | Critical | Never store keys in MEMORY.md. Use environment variables only. |
+|---|---|---|
+| LLM-emitted shell commands | High: a model may emit destructive commands. | Governance policy blocks risky patterns and records blocked steps. |
+| Feishu prompt injection | Medium: hostile text may arrive from chats. | Session isolation, explicit tool permissions, and evidence records. |
+| Local memory files | Low: filesystem access already compromises the agent. | Treat `MEMORY.md` as data, not executable code. |
+| API key leakage | Critical. | Keep keys out of git, memory, docs, and shared logs. Use local env/config only. |
+| Live smoke bundles | Medium: evidence can include operational metadata. | Share only redacted bundles created by `yinyo smoke bundle`. |
 
-### Governance Policy
+---
 
-The `governance.py` module provides a risk policy engine:
+## Governance Policy
+
+`yinyo/governance.py` provides a heuristic risk policy:
+
 - Commands matching dangerous patterns are blocked.
-- Blocked steps are tracked and reported in run manifests.
-- Consecutive failures escalate thinking mode (THINK_HIGH → THINK_MAX).
+- Blocked steps are tracked in run manifests.
+- Consecutive failures can escalate thinking mode.
 
-**This is a heuristic, not a security boundary.** It prevents accidents but does not protect against a determined adversarial LLM.
+This policy prevents common mistakes. It is not a sandbox and must not be
+documented as one.
 
 ---
 
 ## Supported Versions
 
 | Version | Supported |
-|---------|-----------|
-| v7.0 | ✅ Active |
-| v6.0 | ✅ Security fixes |
-| v5.0 | ✅ Security fixes |
-| < v5.0 | ❌ End of life |
+|---|---|
+| `0.1.x-alpha` | Active alpha |
+| Internal `vX.Y` prototypes | Not public release lines |
+| `< 0.1.0` | End of life |
 
 ---
 
-## Best Practices for Deployers
+## Deployer Rules
 
-1. **Never expose YINYO to untrusted multi-user channels** without OS-level sandboxing.
-2. **Use a dedicated API key** with minimal permissions.
-3. **Run in a container or sandbox** for production deployments.
-4. **Review MEMORY.md periodically** — it accumulates from LLM-generated reflections.
-5. **Monitor blocked steps** — frequent blocks indicate either a problem with the agent or malicious input.
+1. Do not expose YINYO to untrusted multi-user channels without an OS or
+   container boundary appropriate for the risk.
+2. Use dedicated Feishu and model-provider keys with the minimum required
+   permissions.
+3. Validate config with `yinyo serve --dry-run` and confirm secrets are
+   redacted.
+4. Keep raw `.env`, runtime JSONL, and live smoke evidence out of git.
+5. Run `python scripts/verify_secrets.py` before sharing logs, bundles, wheels,
+   or release artifacts.
+6. Review `MEMORY.md` and runtime logs periodically; frequent blocked steps
+   require investigation.
+7. Use [docs/incident-playbook.md](docs/incident-playbook.md) for security
+   incidents.
+
+---
+
+## Release Boundary
+
+Local release-matrix, replay, diagnostic, or fixture evidence does not replace
+live Feishu evidence for `1.0.0`. It proves harness code paths only.
+
+The primary `1.0.0` release path is a verified redacted `transport=ws` smoke
+bundle with matching `service_start`, `ws_transport_start`, and
+`ws_event_received` runtime evidence. HTTP evidence is fallback coverage only.
+Matching `ws_sdk_session_id` markers are redacted provenance markers, not
+secrets; the bundle verifier checks that manifest `live_provenance` matches the
+latest runtime log markers before accepting the bundle.
+
+Advanced live evidence must be recorded through `yinyo smoke record-advanced`.
+Operators must not hand-edit `smoke_evidence.jsonl` or advanced records.
+Hand-edited advanced JSONL records do not satisfy the 1.0 release gate.
+Advanced records include a `yinyo.advanced_live_proof.v1` digest over redacted
+required fields; missing or mismatched proof digests are release blockers.
+
+Do not bypass the release verifier, hand-edit live smoke records, or publish raw
+evidence files to satisfy a release gate. Raw `.env`, `runtime.jsonl`,
+`runtime_jobs.jsonl`, `gateway_events.jsonl`, and `smoke_evidence.jsonl` are
+local evidence only and must not be published or shared as release artifacts.
+Publish or share only verified redacted bundles created by `yinyo smoke bundle`;
+do not share raw runtime logs, raw job stores, raw event stores, or raw smoke
+evidence files.
 
 ---
 
 ## Acknowledgments
 
-This security policy is modeled after the [Hermes Agent Security Policy](https://github.com/NousResearch/hermes-agent/blob/main/SECURITY.md).
+This policy is modeled after the
+[Hermes Agent Security Policy](https://github.com/NousResearch/hermes-agent/blob/main/SECURITY.md).

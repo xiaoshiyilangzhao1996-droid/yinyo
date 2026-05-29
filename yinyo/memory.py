@@ -6,7 +6,7 @@
 
 import os, json, shutil, re, math, uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
 
 
@@ -160,11 +160,19 @@ class TemporalTree:
         if old_id not in self.nodes:
             return None
         old = self.nodes[old_id]
-        return self.add(
+        new_node = self.add(
             content=new_content, category=old.category,
             scopes=old.scopes, confidence=old.confidence,
             parent_id=old.parent_id, source_run_id=source_run_id,
+            check_supersede=False,
         )
+        new_node.version = old.version + 1
+        new_node.supersedes = old.id
+        new_node.confidence = max(new_node.confidence, old.confidence + 0.1)
+        old.status = "superseded"
+        old.superseded_by = new_node.id
+        self._save()
+        return new_node
 
     def archive(self, node_id: str):
         """归档节点（不删除，仅标记）。"""
@@ -256,6 +264,46 @@ class TemporalTree:
             trail.append(current)
 
         return trail
+
+    def state_report(self, stale_after_days: int = 30) -> dict:
+        """Return a durable-state report for provenance, staleness, and recovery checks."""
+        now = datetime.now(timezone.utc)
+        stale_cutoff = now - timedelta(days=stale_after_days)
+        active = self.get_active_nodes()
+        superseded = [node for node in self.nodes.values() if node.status == "superseded" and not node.id.startswith("cat-")]
+        archived = [node for node in self.nodes.values() if node.status == "archived" and not node.id.startswith("cat-")]
+        stale = []
+        missing_provenance = []
+        audit_lengths = {}
+        for node in self.nodes.values():
+            if node.id.startswith("cat-"):
+                continue
+            if not node.source_run_id:
+                missing_provenance.append(node.id)
+            try:
+                updated = datetime.fromisoformat(node.updated_at or node.created_at)
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                if node.status not in ("superseded", "archived") and updated < stale_cutoff:
+                    stale.append(node.id)
+            except Exception:
+                stale.append(node.id)
+            if node.status in ("created", "confirmed") and (node.supersedes or node.superseded_by):
+                audit_lengths[node.id] = len(self.get_audit_trail(node.id))
+        return {
+            "schema": "yinyo.temporal_state_report.v1",
+            "nodes": len([node for node in self.nodes.values() if not node.id.startswith("cat-")]),
+            "active": len(active),
+            "superseded": len(superseded),
+            "archived": len(archived),
+            "stale": len(stale),
+            "stale_node_ids": stale,
+            "missing_provenance": missing_provenance,
+            "provenance_complete": not missing_provenance,
+            "audit_trail_lengths": audit_lengths,
+            "stale_after_days": stale_after_days,
+            "updated_at": now.isoformat(),
+        }
 
     # ── 序列化 ──
 
@@ -502,6 +550,58 @@ class SimpleMemCompressor:
 class MemoryStore:
     """统一记忆存储。整合三层架构。"""
 
+    DURABLE_CATEGORIES = {
+        "Preferences",
+        "Projects",
+        "Knowledge",
+        "Blood-Lessons",
+        "Anti-Patterns",
+        "General",
+    }
+    EPHEMERAL_FACT_MARKERS = (
+        "this run",
+        "this task",
+        "current task",
+        "answered",
+        "replied",
+        "said hello",
+        "steps:",
+        "status:",
+        "today",
+        "just now",
+        "temporary",
+        "session only",
+        "本次",
+        "这次",
+        "临时",
+        "刚刚",
+        "今天",
+        "回答了",
+    )
+    DURABLE_FACT_MARKERS = (
+        "user prefers",
+        "user wants",
+        "user requires",
+        "project",
+        "repo",
+        "workspace",
+        "release",
+        "must",
+        "should",
+        "requires",
+        "prefers",
+        "uses",
+        "always",
+        "never",
+        "用户偏好",
+        "用户要求",
+        "项目",
+        "仓库",
+        "必须",
+        "应该",
+        "不要",
+    )
+
     def __init__(self, workspace: str):
         self.workspace = workspace
         cache_dir = os.path.join(workspace, "cache")
@@ -548,18 +648,64 @@ class MemoryStore:
         return self.tree.add(content, category, scopes, confidence,
                             source_run_id=source_run_id)
 
-    def extract_and_store(self, messages: list, run_id: str):
+    def extract_and_store(self, messages: list, run_id: str) -> dict:
         """LLM 提取事实 → 存入 TemporalTree。"""
         if not self._extractor:
-            return
+            return {"stored": 0, "rejected": 0, "reasons": []}
         facts = self._extractor.extract(messages, self.tree)
+        stored = 0
+        rejected = 0
+        reasons = []
         for f in facts:
+            ok, reason, normalized = self._validate_extracted_fact(f)
+            if not ok:
+                rejected += 1
+                reasons.append(reason)
+                continue
+            content = normalized["content"]
+            supersedes = normalized.get("supersedes")
+            if supersedes:
+                self.tree.supersede(str(supersedes), content, source_run_id=run_id)
+                stored += 1
+                continue
             self.tree.add(
-                content=f.get("content", ""),
-                category=f.get("category", "General"),
-                confidence=f.get("confidence", 0.5),
+                content=content,
+                category=normalized["category"],
+                confidence=normalized["confidence"],
                 source_run_id=run_id,
             )
+            stored += 1
+        return {"stored": stored, "rejected": rejected, "reasons": reasons[:10]}
+
+    def _validate_extracted_fact(self, fact: dict) -> tuple[bool, str, dict]:
+        """Keep long-term memory for durable user/project facts, not run logs."""
+        if not isinstance(fact, dict):
+            return False, "fact_not_object", {}
+        content = str(fact.get("content", "")).strip()
+        if len(content) < 8:
+            return False, "content_too_short", {}
+        if len(content) > 500:
+            return False, "content_too_long", {}
+        lowered = content.lower()
+        if any(marker in lowered for marker in self.EPHEMERAL_FACT_MARKERS):
+            return False, "ephemeral_content", {}
+        category = str(fact.get("category", "General") or "General").strip()
+        if category not in self.DURABLE_CATEGORIES:
+            return False, "unsupported_category", {}
+        try:
+            confidence = float(fact.get("confidence", 0.5))
+        except (TypeError, ValueError):
+            return False, "invalid_confidence", {}
+        if confidence < 0.5 or confidence > 1.0:
+            return False, "invalid_confidence", {}
+        if category in {"General", "Knowledge"} and not any(marker in lowered for marker in self.DURABLE_FACT_MARKERS):
+            return False, "not_durable_enough", {}
+        return True, "", {
+            "content": content,
+            "category": category,
+            "confidence": confidence,
+            "supersedes": fact.get("supersedes"),
+        }
 
     def search_memory(self, query: str, scopes: dict = None, limit: int = 5) -> list[MemoryNode]:
         return self.tree.search(query, scopes, limit)
@@ -617,7 +763,7 @@ class MemoryStore:
         for rid in runs[:limit]:
             mpath = os.path.join(runs_dir, rid, "manifest.json")
             if os.path.isfile(mpath):
-                with open(mpath) as f:
+                with open(mpath, encoding="utf-8") as f:
                     result.append({"run_id": rid, **json.load(f)})
         return result
 
@@ -635,7 +781,7 @@ class MemoryStore:
             if os.path.isdir(spath):
                 mp = os.path.join(spath, "meta.json")
                 if os.path.isfile(mp):
-                    with open(mp) as f:
+                    with open(mp, encoding="utf-8") as f:
                         skills.append(json.load(f))
         return skills
 
@@ -646,5 +792,5 @@ class MemoryStore:
         dst = os.path.join(self.workspace, "shadow", run_id)
         if os.path.isdir(src) and not os.path.exists(dst):
             shutil.copytree(src, dst)
-            with open(os.path.join(dst, ".archived"), "w") as f:
+            with open(os.path.join(dst, ".archived"), "w", encoding="utf-8") as f:
                 f.write(datetime.now(timezone.utc).isoformat())

@@ -1,0 +1,104 @@
+name: YINYO Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "External version to verify, e.g. 1.0.0-lite or 1.0.0"
+        required: true
+        default: "1.0.0-lite"
+      runtime_config_path:
+        description: "Optional runtime config path for 1.0 smoke evidence paths"
+        required: false
+        default: ""
+      smoke_bundle_path:
+        description: "Optional redacted smoke evidence bundle directory"
+        required: false
+        default: ""
+      candidate:
+        description: "Optional final release candidate gate, e.g. 1.0.0-lite or 1.0.0"
+        required: false
+        default: ""
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          mkdir -p release-artifacts
+
+      - name: Run tests
+        run: |
+          pytest tests -q
+
+      - name: Replay Feishu scenarios
+        run: |
+          python scripts/replay_scenarios.py
+          python scripts/replay_scenarios.py --matrix
+
+      - name: Verify public tree
+        run: |
+          python scripts/verify_public_tree.py
+
+      - name: Verify release metadata
+        if: ${{ inputs.runtime_config_path == '' && inputs.smoke_bundle_path == '' }}
+        run: |
+          set -o pipefail
+          python scripts/verify_release.py --target "${{ inputs.target }}" --json | tee release-artifacts/release-audit.json
+
+      - name: Verify runtime-config release evidence
+        if: ${{ inputs.runtime_config_path != '' && inputs.smoke_bundle_path == '' }}
+        run: |
+          set -o pipefail
+          python scripts/verify_release.py --target "${{ inputs.target }}" --config "${{ inputs.runtime_config_path }}" --json | tee release-artifacts/release-audit.json
+
+      - name: Verify redacted smoke bundle
+        if: ${{ inputs.smoke_bundle_path != '' }}
+        run: |
+          set -o pipefail
+          python scripts/verify_release.py --target "${{ inputs.target }}" --bundle "${{ inputs.smoke_bundle_path }}" --json | tee release-artifacts/release-audit.json
+
+      - name: Verify final release candidate from bundle
+        if: ${{ inputs.candidate != '' && inputs.smoke_bundle_path != '' }}
+        run: |
+          set -o pipefail
+          python scripts/verify_release.py --target "${{ inputs.target }}" --bundle "${{ inputs.smoke_bundle_path }}" --candidate "${{ inputs.candidate }}" --json | tee release-artifacts/candidate-audit.json
+
+      - name: Verify final release candidate from runtime config
+        if: ${{ inputs.candidate != '' && inputs.smoke_bundle_path == '' }}
+        run: |
+          set -o pipefail
+          python scripts/verify_release.py --target "${{ inputs.target }}" --config "${{ inputs.runtime_config_path }}" --candidate "${{ inputs.candidate }}" --json | tee release-artifacts/candidate-audit.json
+
+      - name: Verify secret hygiene
+        run: |
+          python scripts/verify_secrets.py
+
+      - name: Build distributions
+        run: |
+          python -m build
+
+      - name: Clean install smoke
+        run: |
+          python scripts/verify_wheel.py --skip-build
+
+      - name: Upload release audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yinyo-release-${{ inputs.target }}
+          path: |
+            release-artifacts/*.json
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error

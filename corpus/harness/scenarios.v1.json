@@ -1,0 +1,927 @@
+{
+  "schema": "yinyo.harness_corpus.v1",
+  "version": "2026-05-28",
+  "cases": [
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "image_understanding",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "image_understanding",
+      "release_matrix_refs": [
+        "trait.reliability",
+        "trait.multidisciplinary"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "image_understanding",
+      "proof_required": [
+        "image_understanding"
+      ],
+      "inputs": {
+        "event_id": "evt_image_understanding",
+        "image_key": "img_fixture",
+        "description_template": "fixture image description from {image_path}"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "agent_text_contains_description": true,
+          "job_status": "succeeded",
+          "delivery": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "job_id",
+          "message_ids"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "long_conversation",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "long_conversation",
+      "release_matrix_refs": [
+        "trait.multidisciplinary"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "long_conversation",
+      "proof_required": [
+        "long_context"
+      ],
+      "inputs": {
+        "turns": 14,
+        "old_observation_template": "old observation {index}",
+        "recent_user_text": "important recent request"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "masked_observations_after": {
+            "op": ">=",
+            "value": 6
+          },
+          "protected_recent_context": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "retention_report"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "memory_supersession",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "memory_supersession",
+      "release_matrix_refs": [
+        "core.borrow_what_works",
+        "trait.curiosity",
+        "trait.fact_hygiene"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "memory_supersession",
+      "proof_required": [
+        "memory_supersession"
+      ],
+      "inputs": {
+        "old_fact": "user prefers concise Feishu replies",
+        "new_fact": "user prefers concise Feishu replies with evidence links",
+        "category": "Preferences",
+        "query": "concise Feishu replies"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "old_fact_status": "superseded",
+          "new_fact_version": {
+            "op": ">=",
+            "value": 2
+          },
+          "audit_trail_length": 2,
+          "search_excludes_old": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "old_fact_id",
+          "new_fact_id"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "memory_durability_policy",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "memory_durability_policy",
+      "release_matrix_refs": [
+        "core.borrow_what_works",
+        "trait.curiosity"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "memory_durability"
+      ],
+      "inputs": {
+        "durable_fact": "User prefers concise release checklists.",
+        "ephemeral_fact": "The assistant answered hello during this run.",
+        "durable_category": "Preferences",
+        "ephemeral_category": "General"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "stored": 1,
+          "rejected": 1,
+          "active_categories": [
+            "Preferences"
+          ],
+          "reasons": [
+            "ephemeral_content"
+          ]
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "stored",
+          "rejected"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "temporal_state_recovery",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "temporal_state_recovery",
+      "release_matrix_refs": [
+        "core.borrow_what_works",
+        "trait.curiosity",
+        "harness.Context",
+        "harness.Governance"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "temporal_state_recovery"
+      ],
+      "inputs": {
+        "old_fact": "Project state is alpha.",
+        "new_fact": "Project state is release candidate.",
+        "archived_fact": "Temporary rollout note.",
+        "stale_after_days": 30
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "provenance_complete": true,
+          "superseded": 1,
+          "archived": 1,
+          "stale": 0,
+          "audit_trail_length": 2
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "tree_path",
+          "old_fact_id",
+          "new_fact_id",
+          "archived_fact_id"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "fact_hygiene_policy",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "fact_hygiene_policy",
+      "release_matrix_refs": [
+        "trait.fact_hygiene",
+        "harness.Context",
+        "harness.Governance"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "source_required"
+      ],
+      "inputs": {
+        "question": "What is the latest stock price?"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "status": "source_required",
+          "source_required": true,
+          "source_satisfied": false
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "evidence_file",
+          "source_required"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "state_handoff",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "state_handoff",
+      "release_matrix_refs": [
+        "trait.low_ego_high_drive",
+        "harness.Tooling",
+        "harness.Lifecycle",
+        "harness.Observability",
+        "harness.Governance"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "verified_ws_bundle",
+      "proof_required": [
+        "state_handoff"
+      ],
+      "inputs": {
+        "task": "prepare a state transfer packet",
+        "correlation_id": "scenario-handoff",
+        "max_steps": 2
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "schema": "yinyo.handoff.v1",
+          "correlation_id": "scenario-handoff",
+          "intent_recorded": true,
+          "permissions_recorded": true,
+          "source_audit_recorded": true,
+          "budget_recorded": true,
+          "trace_history_recorded": true,
+          "manifest_linked": true,
+          "resume_schema": "yinyo.handoff_resume.v1",
+          "resume_ready": true,
+          "resume_ok": true,
+          "resume_artifacts_exist": true,
+          "resume_budget_recoverable": true,
+          "resume_trace_recoverable": true,
+          "resume_inherits_intent": true,
+          "resume_inherits_constraints": true,
+          "resume_inherits_permissions": true,
+          "resume_inherits_artifacts": true,
+          "resume_inherits_provenance": true,
+          "resume_inherits_budget": true,
+          "resume_inherits_trace_history": true,
+          "resume_inherits_risk": true,
+          "resume_inherits_unresolved": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "handoff_file",
+          "manifest_path",
+          "resume_schema"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "delegated_worker_trace",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "delegated_worker_trace",
+      "release_matrix_refs": [
+        "harness.Tooling",
+        "harness.Lifecycle"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "delegated_worker_trace"
+      ],
+      "inputs": {
+        "parent_context_marker": "parent shared context marker",
+        "goal": "search for the shared context marker",
+        "search_query": "shared context marker"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "worker_status": "success",
+          "parent_context_shared": true,
+          "tool_traces_min": 1,
+          "required_tool": "do_search"
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "parent_run_id",
+          "worker_run_id",
+          "tool_traces_count",
+          "trace_refs"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "trace2skill_promotion",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "trace2skill_promotion",
+      "release_matrix_refs": [
+        "core.borrow_what_works",
+        "trait.multidisciplinary"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "trace2skill_promotion",
+      "proof_required": [
+        "trace2skill_regression"
+      ],
+      "inputs": {
+        "skill_name": "retry-file-write",
+        "task_keywords": [
+          "write",
+          "confirm"
+        ],
+        "error_message": "Confirmation required",
+        "occurrence_count": 2
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "promotion_status": [
+            "proven",
+            "stable"
+          ],
+          "regression_replay_passed": true,
+          "validation_passed": true,
+          "replay_command_passed": true,
+          "pre_skill_failure_reproduced": true,
+          "post_skill_guardrail_applied": true,
+          "guardrail_applied": true,
+          "pre_skill_failed": true,
+          "post_skill_passed": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "failure_trace_ref",
+          "skill_ref",
+          "regression_result_ref",
+          "validation_ref",
+          "promotion_record_ref",
+          "pre_skill_run_ref",
+          "post_skill_run_ref",
+          "post_promotion_run_ref"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "ack_boundary",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "ack_boundary",
+      "release_matrix_refs": [
+        "harness.Execution"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "ws_ack_boundary",
+      "proof_required": [
+        "ack_boundary"
+      ],
+      "inputs": {
+        "event_id": "evt_ack_boundary",
+        "text": "slow request",
+        "ack_deadline_ms": 3000,
+        "job_id": "job_ack_boundary"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "ack_before_agent_execution": true,
+          "async_dispatch_requested": true,
+          "post_ack_handler_executed": true,
+          "post_ack_delivery": true
+        },
+        "gateway": {
+          "job_status_at_ack": "queued",
+          "post_ack_job_status": "succeeded"
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "job_id",
+          "ack_deadline_ms",
+          "ack_latency_ms"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "ws_sdk_envelope_normalization",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "ws_sdk_envelope_normalization",
+      "release_matrix_refs": [
+        "core.less_is_more",
+        "trait.reliability",
+        "harness.Execution",
+        "harness.Verification"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "ws_sdk_envelope"
+      ],
+      "inputs": {
+        "ack_deadline_ms": 3000,
+        "sdk_envelope": {
+          "schema": "2.0",
+          "header": {
+            "event_id": "evt_ws_sdk_1"
+          },
+          "event": {
+            "sender": {
+              "sender_id": {
+                "open_id": "ou_sdk_1"
+              }
+            },
+            "message": {
+              "message_type": "text",
+              "content": "{\"text\":\"hello from sdk\"}",
+              "chat_id": "oc_sdk_1",
+              "message_id": "om_sdk_1"
+            }
+          }
+        }
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "schema": "yinyo.ws_sdk_envelope_normalization.v1",
+          "normalized_type": "event_callback",
+          "normalized_message_type": "text",
+          "normalized_text": "hello from sdk",
+          "gateway_received_normalized": true,
+          "async_dispatch_requested": true,
+          "logger_recorded_ws_event": true
+        },
+        "gateway": {
+          "job_status_at_ack": "queued"
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "sdk_event_id",
+          "normalized_uuid",
+          "job_id",
+          "runtime_log"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "worker_saturation_backpressure",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "worker_saturation_backpressure",
+      "release_matrix_refs": [
+        "harness.Execution",
+        "harness.Observability"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "worker_saturation"
+      ],
+      "inputs": {
+        "max_workers": 1,
+        "queued_jobs": 2
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "rejected_jobs": 1,
+          "rejection_error": "job queue saturated",
+          "rejection_recorded": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "job_store",
+          "rejected_jobs",
+          "max_workers"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "runtime_lock_single_writer",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "runtime_lock_single_writer",
+      "release_matrix_refs": [
+        "harness.Governance"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "runtime_lock"
+      ],
+      "inputs": {
+        "lock_name": "yinyo_runtime.lock",
+        "owner": "scenario-owner"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "second_writer_blocked": true,
+          "available_after_release": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "lock_path",
+          "owner",
+          "second_writer_blocked"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "workspace_boundary",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "workspace_boundary",
+      "release_matrix_refs": [
+        "harness.Execution",
+        "harness.Governance"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "workspace_boundary"
+      ],
+      "inputs": {
+        "inside_file": "inside.txt",
+        "outside_file": "outside.txt"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "inside_read_ok": true,
+          "blocked_operations": 5,
+          "escaped_file_created": false
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "workspace",
+          "outside_path",
+          "blocked_operations"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "trace_failure_diagnosis",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "trace_failure_diagnosis",
+      "release_matrix_refs": [
+        "harness.Observability",
+        "harness.Verification"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "trace_failure_diagnosis"
+      ],
+      "inputs": {
+        "event_key": "evt_trace_diagnosis"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "root_cause": "runtime_job_failed",
+          "min_evidence_refs": 1
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "runtime_log",
+          "job_store",
+          "event_key"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "resource_quota",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "resource_quota",
+      "release_matrix_refs": [
+        "harness.Execution",
+        "harness.Governance"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "resource_quota"
+      ],
+      "inputs": {
+        "read_limit": 7,
+        "search_files": 60
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "read_limit_enforced": true,
+          "search_result_cap": 50,
+          "large_file_skipped": true,
+          "output_truncated": true,
+          "timeout_blocked": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "workspace",
+          "read_limit",
+          "search_result_cap",
+          "output_limits",
+          "timeout_seconds"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "deepseek_usage",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "deepseek_usage",
+      "release_matrix_refs": [
+        "core.deepseek_adapted"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "deepseek_usage",
+      "proof_required": [
+        "model_usage"
+      ],
+      "inputs": {
+        "default_model_prefix": "deepseek",
+        "budget": {
+          "max_prompt_tokens": 64,
+          "max_completion_tokens": 16,
+          "max_total_tokens": 96,
+          "max_estimated_cost_usd": 0.001
+        }
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "total_tokens": 42,
+          "within_budget": true,
+          "retry_recovered": true,
+          "fallback_observed": true,
+          "degradation_status": "model_error",
+          "error_classifications": [
+            "rate_limit",
+            "timeout"
+          ]
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "manifest_path",
+          "model_envelope_schema"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "partial_failure",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "partial_failure",
+      "release_matrix_refs": [
+        "core.deepseek_adapted",
+        "trait.negative_capability",
+        "trait.fact_hygiene"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "partial_failure",
+      "proof_required": [
+        "partial_failure"
+      ],
+      "inputs": {
+        "dangerous_command": "rm -rf /",
+        "confirmation_actor": "scenario-operator"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "user_visible_status": "partial",
+          "blocked_evidence_records": {
+            "op": ">",
+            "value": 0
+          },
+          "no_false_success": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "evidence_file",
+          "blocked_records"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "card_fallback",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "card_fallback",
+      "release_matrix_refs": [
+        "trait.reliability",
+        "harness.Execution",
+        "harness.Tooling"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "card_fallback",
+      "proof_required": [
+        "card_fallback"
+      ],
+      "inputs": {
+        "event_id": "evt_card_1",
+        "text": "hello",
+        "required_smoke": [
+          "text_message_reply",
+          "card_fallback"
+        ]
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "gateway_fallback": true,
+          "smoke_ok": true,
+          "card_invalid_error_detected": true
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "job_id",
+          "smoke_path"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "adaptive_simplification",
+      "version": "1.0.0",
+      "kind": "local_harness",
+      "runner": "adaptive_simplification",
+      "release_matrix_refs": [
+        "harness.Verification"
+      ],
+      "live_required_for_1_0": false,
+      "live_scenario": "",
+      "proof_required": [
+        "adaptive_simplification"
+      ],
+      "inputs": {
+        "target_proof": "model_usage"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "ablation_schema": "yinyo.proof_ablation.v1",
+          "baseline_ok": true,
+          "proof_ablated_ok": false,
+          "scenario_ablated_ok": false,
+          "affected_layers": [
+            "Observability",
+            "Verification"
+          ],
+          "affected_rows": [
+            "core.deepseek_adapted"
+          ]
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "target_proof",
+          "affected_layers",
+          "affected_rows"
+        ]
+      }
+    },
+    {
+      "schema": "yinyo.harness_scenario.v1",
+      "id": "release_gate",
+      "version": "1.0.0",
+      "kind": "release_gate_fixture",
+      "runner": "release_gate",
+      "release_matrix_refs": [
+        "trait.low_ego_high_drive"
+      ],
+      "live_required_for_1_0": true,
+      "live_scenario": "verified_ws_bundle",
+      "proof_required": [
+        "release_gate"
+      ],
+      "inputs": {
+        "transport": "ws"
+      },
+      "expect": {
+        "passed": true,
+        "evidence": {
+          "transport": "ws",
+          "live_smoke_blocks_1_0_until_present": true,
+          "required_live_scenarios_excludes": [
+            "url_verification"
+          ]
+        },
+        "bundle": {
+          "required": true,
+          "verified": false
+        }
+      },
+      "proof_envelope": {
+        "source": "versioned_harness_corpus",
+        "refs_required": [
+          "corpus",
+          "case",
+          "required_live_scenarios",
+          "missing_live_scenarios"
+        ]
+      }
+    }
+  ]
+}
